@@ -1,21 +1,33 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { User, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ROLES = ["member", "owner"];
+
+const ACCOUNT_TYPES = [
+  {
+    key: "personal",
+    label: "Personal",
+    desc: "For individual use",
+    icon: User,
+  },
+  {
+    key: "team",
+    label: "Team Workspace",
+    desc: "Collaborate with your team",
+    icon: Users,
+  },
+];
 
 export default function Register() {
-  const { register, setAuthError } = useAuth();
+  const { register, authError } = useAuth();
+  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") || "light";
-
-    const isDark = savedTheme === "dark";
-
-    document.documentElement.classList.toggle("dark", isDark);
-    setAuthError(null);
+    document.documentElement.classList.toggle("dark", savedTheme === "dark");
   }, []);
 
   const [form, setForm] = useState({
@@ -23,9 +35,9 @@ export default function Register() {
     last_name: "",
     phone: "",
     pin: "",
-    role: "member",
-    orgName: "",
-    orgDesc: "",
+    accountType: "personal",
+    workspaceName: "",
+    workspaceDesc: "",
   });
 
   const [error, setError] = useState("");
@@ -33,36 +45,72 @@ export default function Register() {
   const handleSubmit = async () => {
     setError("");
 
-    if (!form.first_name) return setError("Name is required");
-    if (!form.last_name) return setError("Last Name is required");
-    if (!form.phone) return setError("Phone is required");
-    if (form.pin.length !== 4) return setError("PIN must be 4 digits");
+    setIsLoadingAuth(true);
 
-    if (form.role === "owner" && !form.orgName) {
-      return setError("Organization name is required");
+
+    // =========================
+    // VALIDATION
+    // =========================
+    if (!form.first_name.trim()) {
+      setError("First name is required");
+      return;
     }
 
-    try {
-      await register(form);
+    if (!form.last_name.trim()) {
+      setError("Last name is required");
+      return;
+    }
 
-      navigate("/auth");
+    if (!form.phone.trim()) {
+      setError("Phone is required");
+      return;
+    }
+
+    if (!/^\d{4}$/.test(form.pin)) {
+      setError("PIN must be exactly 4 digits");
+      return;
+    }
+
+    if (form.accountType === "team" && !form.workspaceName.trim()) {
+      setError("Workspace name is required");
+      return;
+    }
+
+    const payload = {
+      first_name: form.first_name,
+      last_name: form.last_name,
+      phone: form.phone,
+      pin: form.pin,
+      accountType: form.accountType,
+      workspaceName: form.workspaceName || null,
+      workspaceDesc: form.workspaceDesc || null,
+    };
+    try {
+      const res = await register(payload);
+
+      setTimeout(() => {
+        navigate("/setup");
+      }, 1500);
+
     } catch (err) {
       setError(err.message || "Registration failed");
+    } finally {
+      setIsLoadingAuth(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted px-4 py-6 transition-color">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted px-4 py-6 transition-colors">
 
-      <div className="w-full max-w-md bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/40 p-6 space-y-5 transition-colors">
+      <div className="w-full max-w-md bg-card/80 backdrop-blur-xl border border-border shadow-xl rounded-3xl p-5 sm:p-6 flex flex-col gap-5 transition-colors">
 
         {/* TITLE */}
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
+        <div className="text-center space-y-1">
+          <h1 className="text-xl sm:text-2xl font-semibold text-foreground">
             Create Account
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Setup your workspace
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Choose how you want to use your workspace
           </p>
         </div>
 
@@ -71,19 +119,14 @@ export default function Register() {
           <input
             placeholder="First Name"
             value={form.first_name}
-            onChange={(e) =>
-              setForm({ ...form, first_name: e.target.value })
-            }
-            className="reg-input dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400"
+            onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+            className="w-full px-4 py-3 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
           />
-
           <input
             placeholder="Last Name"
             value={form.last_name}
-            onChange={(e) =>
-              setForm({ ...form, last_name: e.target.value })
-            }
-            className="reg-input dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400"
+            onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+            className="w-full px-4 py-3 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
           />
         </div>
 
@@ -91,10 +134,8 @@ export default function Register() {
         <input
           placeholder="Phone Number"
           value={form.phone}
-          onChange={(e) =>
-            setForm({ ...form, phone: e.target.value })
-          }
-          className="reg-input dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400"
+          onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          className="w-full px-4 py-3 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
         />
 
         {/* PIN */}
@@ -103,62 +144,94 @@ export default function Register() {
           maxLength={4}
           placeholder="4-digit PIN"
           value={form.pin}
-          onChange={(e) =>
-            setForm({ ...form, pin: e.target.value })
-          }
-          className="reg-input text-center tracking-widest dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400"
+          onChange={(e) => setForm({ ...form, pin: e.target.value })}
+          className="w-full px-4 py-3 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
         />
 
-        {/* ROLE SELECT */}
+        {/* ACCOUNT TYPE */}
         <div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-            Select Role
+          <p className="text-xs text-muted-foreground mb-3">
+            Choose Account Type
           </p>
 
-          <div className="grid grid-cols-2 gap-4 mx-4">
-            {ROLES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setForm({ ...form, role: r })}
-                className={cn(
-                  "py-2 rounded-xl border text-xs capitalize transition",
-                  form.role === r
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:hover:bg-slate-700"
-                )}
-              >
-                {r}
-              </button>
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {ACCOUNT_TYPES.map((type) => {
+              const Icon = type.icon;
+              const isActive = form.accountType === type.key;
+
+              return (
+                <button
+                  key={type.key}
+                  onClick={() => setForm({ ...form, accountType: type.key })}
+                  className={cn(
+                    "relative p-4 rounded-2xl border text-left transition-all duration-200 group",
+                    "hover:shadow-md hover:-translate-y-[1px]",
+                    isActive
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-background"
+                  )}
+                >
+                  {/* CHECK */}
+                  <div
+                    className={cn(
+                      "absolute top-3 right-3 w-4 h-4 rounded-full border",
+                      isActive
+                        ? "bg-primary border-primary"
+                        : "border-border"
+                    )}
+                  />
+
+                  {/* ICON */}
+                  <div
+                    className={cn(
+                      "w-10 h-10 flex items-center justify-center rounded-xl mb-3 transition-colors",
+                      isActive
+                        ? "bg-primary text-primary-foreground dark:text-black"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    <Icon size={18} />
+                  </div>
+
+                  {/* TEXT */}
+                  <p className="text-sm font-semibold text-foreground">
+                    {type.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {type.desc}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* OWNER EXTRA FIELDS */}
-        {form.role === "owner" && (
-          <div className="space-y-3">
+        {/* TEAM FIELDS */}
+        {form.accountType === "team" && (
+          <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
             <input
-              placeholder="Organization Name"
-              value={form.orgName}
+              placeholder="Workspace Name"
+              value={form.workspaceName}
               onChange={(e) =>
-                setForm({ ...form, orgName: e.target.value })
+                setForm({ ...form, workspaceName: e.target.value })
               }
-              className="reg-input dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400"
+              className="w-full px-4 py-3 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
             />
 
             <textarea
-              placeholder="Organization Description"
-              value={form.orgDesc}
+              placeholder="Workspace Description (optional)"
+              value={form.workspaceDesc}
               onChange={(e) =>
-                setForm({ ...form, orgDesc: e.target.value })
+                setForm({ ...form, workspaceDesc: e.target.value })
               }
-              className="reg-input dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400"
+              className="w-full px-4 py-3 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
             />
           </div>
         )}
 
         {/* ERROR */}
         {error && (
-          <div className="text-red-600 dark:text-red-400 text-sm text-center bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900 py-2 rounded-xl">
+          <div className="text-center text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-xl py-2 px-3">
             {error}
           </div>
         )}
@@ -166,21 +239,19 @@ export default function Register() {
         {/* SUBMIT */}
         <button
           onClick={handleSubmit}
-            className="
-            w-full py-3 rounded-xl font-medium shadow-md
-            bg-primary text-white hover:bg-primary
-            dark:bg-slate-800 border border-border dark:border-slate-700 shadow-sm  dark:hover:bg-slate-700 active:scale-95 transition text-base sm:text-lg font-semibold text-slate-900 dark:text-white
-            hover:opacity-90 active:scale-[0.98] transition mt-2
-          "
+          disabled={isLoadingAuth}
+          className="w-full py-3 rounded-xl font-medium shadow-md
+        bg-primary text-white hover:opacity-90 active:scale-[0.98]
+        transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          Create Account
+          {isLoadingAuth ? "Creating Account..." : "Create Account"}
         </button>
 
-        {/* LOGIN LINK */}
-        <p className="text-sm text-center text-slate-600 dark:text-slate-400">
+        {/* LOGIN */}
+        <p className="text-xs sm:text-sm text-center text-muted-foreground">
           Already have an account?{" "}
           <span
-            className="text-primary cursor-pointer"
+            className="text-primary font-medium cursor-pointer"
             onClick={() => navigate("/auth")}
           >
             Login

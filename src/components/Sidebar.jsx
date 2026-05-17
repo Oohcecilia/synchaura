@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -17,6 +18,7 @@ import NotificationBell from "@/components/NotificationBell";
 import tf_logo from "@/assets/tf-logo.png";
 import ts_logo from "@/assets/ts-logo.png";
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useAppData } from "@/lib/DataProvider";
 
 // =========================
 // NAV ITEMS WITH ROLES
@@ -27,8 +29,8 @@ const navItems = [
   { path: "/tasks", label: "Tasks", icon: CheckSquare },
 
   {
-    path: "/organizations",
-    label: "Organizations",
+    path: "/workspace",
+    label: "Workspace",
     icon: Building2,
     roles: ["owner", "admin"],
   },
@@ -37,50 +39,53 @@ const navItems = [
     path: "/teams",
     label: "Teams",
     icon: Users,
-    roles: ["owner", "admin"],
+    hideWhenEmpty: "teams",
   },
 
   {
     path: "/members",
     label: "Members",
     icon: UserCircle,
-    roles: ["owner", "admin", "supervisor"],
+    hideWhenEmpty: "members",
   },
 
   { path: "/calendar", label: "Calendar", icon: Calendar },
 
   { path: "/map", label: "Location", icon: MapPin },
 
-  {
-    path: "/settings",
-    label: "Settings",
-    icon: Settings,
-  },
+  { path: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar({ onClose }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, hasFullAccess } = useAuth();
-  const isMobile = useIsMobile()
+  const { user, logout } = useAuth();
+  const isMobile = useIsMobile();
+  const [hasFullAccess, setHasFullAccess] = useState(true);
+
 
   // =========================
   // ROLE CHECK (SCALABLE)
   // =========================
   const hasRole = (roles = []) => {
-    return user?.access_rights?.some((a) =>
+    return user?.memberships?.some((a) =>
       roles.includes(a.role)
     );
   };
 
-  // =========================
-  // FILTER NAV
-  // =========================
-  const filteredNav = navItems.filter((item) => {
-    if (!item.roles) return true; // public
-    return hasRole(item.roles);
-  });
+  const { workspaces, teams, members, hasMembers, hasTeams } = useAppData();
 
+  const dataMap = {
+    teams: hasTeams,
+    members: hasMembers,
+  };
+
+  const filteredNav = navItems.filter((item) => {
+    if (!item.hideWhenEmpty) return true;
+
+    return dataMap[item.hideWhenEmpty];
+  });
+  
   const handleLogout = () => {
     logout();
     navigate("/auth");
@@ -100,18 +105,18 @@ export default function Sidebar({ onClose }) {
               />
             </div>
           ) : (
-        <div
-          className={cn(
-            "flex items-center p-1 rounded transition-colors",
-            "dark:bg-primary d dark:shadow-md dark:shadow-primary/25"
-          )}
-        >
-          <img
-            src={tf_logo}
-            alt="Teamstar Text Logo"
-            className="h-4 w-auto object-contain"
-          />
-        </div>
+            <div
+              className={cn(
+                "flex items-center p-1 rounded transition-colors",
+                "dark:bg-primary d dark:shadow-md dark:shadow-primary/25"
+              )}
+            >
+              <img
+                src={tf_logo}
+                alt="Teamstar Text Logo"
+                className="h-4 w-auto object-contain"
+              />
+            </div>
           )}
         </div>
 

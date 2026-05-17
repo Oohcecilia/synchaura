@@ -13,16 +13,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src")
-      // Removed the spark-md5 alias
     },
   },
 
-  // Proactively define 'global' as 'window' 
-  // to prevent PouchDB's inevitable ReferenceError
   define: {
     global: 'window',
   },
-  // If you still see issues, add this specifically:
   optimizeDeps: {
     include: ['pouchdb/dist/pouchdb.js']
   }

@@ -30,7 +30,7 @@ export default function Members() {
   const {
     members,
     teams,
-    organizations,
+    workspaces,
     userList,
     loading,
   } = useAppData();
@@ -81,7 +81,7 @@ export default function Members() {
     setInviting(true);
 
     const selectedOrgName =
-      organizations.find((o) => o._id === selectedOrg)?.name || "";
+      workspaces.find((o) => o._id === selectedOrg)?.name || "";
 
     try {
       await createNotification(
@@ -237,7 +237,7 @@ export default function Members() {
           }}
           member={accessMember}
           teams={teams}
-          organizations={organizations}
+          workspaces={workspaces}
         />
       )}
 
@@ -330,7 +330,7 @@ export default function Members() {
                   </SelectTrigger>
 
                   <SelectContent>
-                    {organizations.map((org) => (
+                    {workspaces.map((org) => (
                       <SelectItem key={org._id} value={org._id}>
                         {org.name}
                       </SelectItem>

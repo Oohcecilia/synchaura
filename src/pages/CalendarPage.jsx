@@ -29,7 +29,7 @@ export default function CalendarPage() {
     tasks,
     teams,
     members,
-    organizations,
+    workspaces,
     loading,
   } = useAppData();
 
@@ -267,7 +267,7 @@ export default function CalendarPage() {
         task={editTask}
         teams={teams}
         members={members}
-        organizations={organizations}
+        workspaces={workspaces}
       />
     </div>
   );

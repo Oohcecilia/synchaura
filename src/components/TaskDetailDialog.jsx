@@ -2,14 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Trash2, UsersRound } from "lucide-react";
-import { createRecord } from "@/db/helpers";
+import { createRecord, hasTaskAccess } from "@/db/helpers";
 import { getTasksLogs, getTeam, getUser } from "@/db/api";
 import { Play, Square, Clock, Calendar, MapPin, Users, TrendingUp, Edit } from "lucide-react";
+import TaskThread from "@/components/TaskThread";
+import { AttachmentsViewer } from "@/components/TaskAttachments";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
-import { hasAccessTask } from "@/utils/helpers"
-
 import { getDB } from "@/db/couch";
 
 import {
@@ -40,7 +40,7 @@ function formatDuration(seconds) {
 }
 
 export default function TaskDetailDialog({ open, onOpenChange, task, members, onEdit }) {
-    const { user } = useAuth();
+    const { user, session } = useAuth();
     const [timeLogs, setTimeLogs] = useState([]);
     const [running, setRunning] = useState(false);
     const [elapsed, setElapsed] = useState(0);
@@ -59,7 +59,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
             setTeam(fetchTeam?.team || null);
         }
 
-        const res = await getTasksLogs(user, task._id);
+        const res = await getTasksLogs(session.userId, task._id);
         const logs = res?.allLogs || [];
 
 
@@ -77,6 +77,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
 
         return enrichedLogs; // ✅ IMPORTANT FIX
     };
+
 
 
     useEffect(() => {
@@ -110,7 +111,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
             started_at: now,
             ended_at: null,
             duration_minutes: null, // null duration triggers your "Running..." UI
-            user: user
+            user: session.userId
         };
 
         setTimeLogs((prev) => [tempLog, ...prev]);
@@ -129,7 +130,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
             return;
         }
 
-        const db = getDB(user?.id); // Using your specified DB getter
+        const db = getDB(session.userId); // Using your specified DB getter
         const now = new Date().toISOString();
 
         const duration_seconds = elapsed;
@@ -139,7 +140,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
             // ✅ 1. Create the complete log record
             const logToSave = {
                 task_id: task._id,
-                started_by: user.id,
+                started_by: session.userId,
                 started_at: activeStart,
                 ended_at: now,
                 duration_seconds,
@@ -147,7 +148,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
             };
 
             // This uses the createRecord function we updated earlier for PouchDB
-            await createRecord(user, "timelogs", logToSave);
+            await createRecord(session.userId, "timelogs", logToSave);
 
             // ✅ 2. Reload clean + sorted list
             const updatedLogs = await loadLogs();
@@ -185,7 +186,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
 
         try {
             // 1. Get the PouchDB instance
-            const db = getDB(user?.id);
+            const db = getDB(session?.userId);
             if (!db) return;
 
             // 2. Fetch the fresh document to get the current _rev
@@ -201,14 +202,6 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
             // ✅ Close the Detail Dialog
             onOpenChange(false);
 
-            // 4. Notify the app that data has changed
-            // This triggers your useEffect listeners to refresh the UI
-            window.dispatchEvent(
-                new CustomEvent("route:changed", {
-                    detail: { route: window.location.pathname }
-                })
-            );
-
         } catch (err) {
             console.error("❌ Task deletion failed:", err);
         }
@@ -216,7 +209,8 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
 
     if (!task) return null;
 
-    const allowed = hasAccessTask(user, task)
+    const allowed = hasTaskAccess(session, task)
+    
     const assignedMembers = (task.assigned_to || []).map((id) => members?.find((m) => m.id === id)).filter(Boolean);
     const totalLoggedMins = timeLogs.reduce((sum, l) => sum + (l.duration_minutes || 0), 0);
     const totalLoggedHours = (totalLoggedMins / 60).toFixed(2);
@@ -263,8 +257,8 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
                     <div className="space-y-5">
                         {/* Badges */}
                         <div className="flex flex-wrap gap-2">
-                            <span className={cn("text-[11px] font-semibold px-2.5 py-1 rounded-full", priorityConfig[task.priority] || priorityConfig.medium)}>
-                                {task.priority} priority
+                            <span className={cn("text-[11px] font-semibold px-2.5 py-1 rounded-full capitalize", priorityConfig[task.priority] || priorityConfig.medium)}>
+                                {task.priority}
                             </span>
                             <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground capitalize">
                                 {task.status}
@@ -370,7 +364,16 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
                                 </div>
                             </div>
                         )}
+
+
+
+                        {/* Attachments */}
+                        <AttachmentsViewer attachments={task.attachments} />
+
+                        {/* Discussion Thread */}
+                        <TaskThread task={task} members={members} currentUser={session} />
                     </div>
+
                 </DialogContent>
             </Dialog>
 

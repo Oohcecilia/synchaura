@@ -1,10 +1,11 @@
 import { getDB } from "@/db/couch";
 import { nanoid } from "nanoid";
+import { getDocument } from "./api";
 
 // GENERIC CREATE
-export async function createRecord(user, storeName, data) {
+export async function createRecord(userId, storeName, data) {
   // 1. Get the DB instance for the user
-  const db = getDB(user?.id);
+  const db = getDB(userId);
 
   if (db) {
     // 2. Prepare the record
@@ -57,4 +58,22 @@ export async function getUserOrgIds(user) {
   return (user?.access_rights || [])
     .map((a) => a.org_id)
     .filter(Boolean);
+}
+
+
+export async function hasTaskAccess(user, task) {
+  if (!user || !task) return false;
+
+  const wsId = String(task.workspace_id);
+
+  const membership = await getDocument("membership", wsId);
+
+  const hasAccess =
+    membership?.user_id === user?._id ||
+    membership?.user_ids?.includes(user?._id);
+
+
+  if (!hasAccess) return false;
+
+  return true;
 }

@@ -1,12 +1,15 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import usePouchChanges from "@/hooks/usePouchChanges";
 import { useAuth } from "@/lib/AuthContext";
-import { fetchedUserData } from "@/db/api";
+import { getUserAccessMap, fetchedUserData } from "@/db/api";
+
 
 const DataContext = createContext();
 
 export function DataProvider({ children }) {
-  const { user } = useAuth();
+  const { isAuthenticated, session, setUser } = useAuth();
+  const [hasMembers, setHasMembers] = useState(false);
+  const [hasTeams, setHasTeam] = useState(false);
 
   // =========================
   // SAFE INITIAL STATE
@@ -15,7 +18,7 @@ export function DataProvider({ children }) {
     tasks: [],
     teams: [],
     members: [],
-    organizations: [],
+    workspaces: [],
     timelogs: [],
     userList: [],
   });
@@ -26,22 +29,30 @@ export function DataProvider({ children }) {
   // SAFE LOADER
   // =========================
   const loadData = useCallback(async () => {
-    if (!user) return;
+    if (!session) return;
 
     try {
       setLoading(true);
 
-      const res = await fetchedUserData(user);
+      const res = await fetchedUserData(session);
 
       // 🔥 CRITICAL: sanitize everything
       setData({
         tasks: res?.tasks ?? [],
         teams: res?.teams ?? [],
         members: res?.members ?? [],
-        organizations: res?.organizations ?? [],
+        workspaces: res?.workspaces ?? [],
         timelogs: res?.timelogs ?? [],
         userList: res?.userList ?? [],
       });
+
+      if (res?.members > 0) setHasMembers(true);
+      if (res?.teams > 0) setHasTeam(true);
+
+
+      const userAccess = await getUserAccessMap(session.userId);
+
+      setUser(userAccess);
 
     } catch (err) {
       console.error("DataProvider loadData error:", err);
@@ -51,7 +62,7 @@ export function DataProvider({ children }) {
         tasks: [],
         teams: [],
         members: [],
-        organizations: [],
+        workspaces: [],
         timelogs: [],
         userList: [],
       });
@@ -59,26 +70,74 @@ export function DataProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [session]);
 
   // =========================
   // INITIAL LOAD (SAFE)
   // =========================
   useEffect(() => {
-    if (!user) return;
+    if (!isAuthenticated) return;
+
     loadData();
-  }, [user, loadData]);
+
+  }, [session, loadData]);
 
   // =========================
   // REALTIME POUCHDB CHANGES
   // (debounced to avoid reload spam)
   // =========================
-  usePouchChanges(user, () => {
-    if (!user) return;
 
-    console.log("📡 Data changed → reloading...");
 
-    loadData();
+  usePouchChanges(session?.userId, (doc) => {
+    if (!session?.userId || !doc) return;
+
+    setData((prev) => {
+      const next = { ...prev };
+
+      // ======================
+      // TASKS
+      // ======================
+      if (doc.type === "task") {
+        if (doc._deleted) {
+          next.tasks = prev.tasks.filter(
+            (t) => t._id !== doc._id
+          );
+        } else {
+          const exists = prev.tasks.some(
+            (t) => t._id === doc._id
+          );
+
+          next.tasks = exists
+            ? prev.tasks.map((t) =>
+              t._id === doc._id ? doc : t
+            )
+            : [doc, ...prev.tasks];
+        }
+      }
+
+      // ======================
+      // TEAMS
+      // ======================
+      if (doc.type === "team") {
+        if (doc._deleted) {
+          next.teams = prev.teams.filter(
+            (t) => t._id !== doc._id
+          );
+        } else {
+          const exists = prev.teams.some(
+            (t) => t._id === doc._id
+          );
+
+          next.teams = exists
+            ? prev.teams.map((t) =>
+              t._id === doc._id ? doc : t
+            )
+            : [doc, ...prev.teams];
+        }
+      }
+
+      return next;
+    });
   });
 
   // =========================
@@ -88,9 +147,11 @@ export function DataProvider({ children }) {
     tasks: data.tasks ?? [],
     teams: data.teams ?? [],
     members: data.members ?? [],
-    organizations: data.organizations ?? [],
+    workspaces: data.workspaces ?? [],
     timelogs: data.timelogs ?? [],
     userList: data.userList ?? [],
+    hasMembers,
+    hasTeams
   };
 
   return (

@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, Outlet } from 'react-router-dom';
 
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -13,13 +13,13 @@ import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
 import Teams from './pages/Teams';
 import Members from './pages/Members';
-import Organizations from './pages/Organizations';
+import Workspace from './pages/Workspace';
 import CalendarPage from './pages/CalendarPage';
 import MapPage from './pages/MapPage';
 import Settings from './pages/Settings';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-
+import SetupPage from './pages/SplashScreen';
 
 
 // 🔒 Protected Route Wrapper
@@ -38,10 +38,10 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/auth" replace />;
   }
 
-
   return children;
 };
 
+// 🔐 Role Guard
 const RoleProtectedRoute = ({ children }) => {
   const { hasFullAccess } = useAuth();
 
@@ -52,65 +52,75 @@ const RoleProtectedRoute = ({ children }) => {
   return children;
 };
 
+// 🧩 PRIVATE OUTLET (IMPORTANT)
+function PrivateOutlet() {
+  return <Outlet />;
+}
+
+
 function App() {
   return (
     <QueryClientProvider client={queryClientInstance}>
       <AuthProvider>
-        <SyncProvider>   {/* 👈 ADD THIS */}
-          <DataProvider>
-            <Router>
-              <Routes>
-                <Route path="/auth" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
+        <Router>
+          <Routes>
+
+            {/* ========================= PUBLIC ========================= */}
+            <Route path="/auth" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+
+            {/* ========================= PRIVATE ROOT ========================= */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <SyncProvider>
+                    <DataProvider>
+                      <PrivateOutlet />
+                    </DataProvider>
+                  </SyncProvider>
+                </ProtectedRoute>
+              }
+            >
+
+              {/* SETUP */}
+              <Route path="/setup" element={<SetupPage />} />
+
+              {/* APP */}
+              <Route path="/" element={<Layout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="tasks" element={<Tasks />} />
+                <Route path="workspace" element={ <Workspace /> } />
+                <Route path="calendar" element={<CalendarPage />} />
+                <Route path="map" element={<MapPage />} />
+                <Route path="settings" element={<Settings />} />
 
                 <Route
-                  path="/"
+                  path="teams"
                   element={
-                    <ProtectedRoute>
-                      <Layout />
-                    </ProtectedRoute>
+                    <RoleProtectedRoute>
+                      <Teams />
+                    </RoleProtectedRoute>
                   }
-                >
-                  <Route index element={<Dashboard />} />
-                  <Route path="tasks" element={<Tasks />} />
-                  <Route path="calendar" element={<CalendarPage />} />
-                  <Route path="map" element={<MapPage />} />
-                  <Route path="settings" element={<Settings />} />
+                />
 
-                  <Route
-                    path="organizations"
-                    element={
-                      <RoleProtectedRoute>
-                        <Organizations />
-                      </RoleProtectedRoute>
-                    }
-                  />
+                <Route
+                  path="members"
+                  element={
+                    <RoleProtectedRoute>
+                      <Members />
+                    </RoleProtectedRoute>
+                  }
+                />
+              </Route>
+            </Route>
 
-                  <Route
-                    path="teams"
-                    element={
-                      <RoleProtectedRoute>
-                        <Teams />
-                      </RoleProtectedRoute>
-                    }
-                  />
+            {/* ========================= FALLBACK ========================= */}
+            <Route path="*" element={<PageNotFound />} />
 
-                  <Route
-                    path="members"
-                    element={
-                      <RoleProtectedRoute roles={["owner", "admin", "supervisor"]}>
-                        <Members />
-                      </RoleProtectedRoute>
-                    }
-                  />
-                </Route>
+          </Routes>
+        </Router>
 
-                <Route path="*" element={<PageNotFound />} />
-              </Routes>
-            </Router>
-          </DataProvider>
-          <Toaster />
-        </SyncProvider> {/* 👈 ADD THIS */}
+        <Toaster />
       </AuthProvider>
     </QueryClientProvider>
   );

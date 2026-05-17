@@ -22,6 +22,7 @@ import TaskDetailDialog from "../components/TaskDetailDialog";
 import EmptyState from "../components/EmptyState";
 
 import { getSavedTheme, applyTheme } from "@/utils/theme";
+import { hasTaskAccess } from "@/db/helpers";
 
 export default function Tasks() {
   const { hasFullAccess } = useAuth();
@@ -31,10 +32,11 @@ export default function Tasks() {
     tasks,
     teams,
     members,
-    organizations,
+    workspaces,
     loading,
     reload, // optional manual refresh
   } = useAppData();
+
 
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -99,18 +101,16 @@ export default function Tasks() {
           </p>
         </div>
 
-        {hasFullAccess && (
-          <Button
-            onClick={() => {
-              setEditTask(null);
-              setShowForm(true);
-            }}
-            className="rounded-xl shadow-lg shadow-primary/25"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Task
-          </Button>
-        )}
+        <Button
+          onClick={() => {
+            setEditTask(null);
+            setShowForm(true);
+          }}
+          className="rounded-xl shadow-lg shadow-primary/25"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          New Task
+        </Button>
       </div>
 
       {/* SEARCH */}
@@ -131,6 +131,7 @@ export default function Tasks() {
           <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
           <TabsTrigger value="today" className="text-xs">Today</TabsTrigger>
           <TabsTrigger value="upcoming" className="text-xs">Upcoming</TabsTrigger>
+          <TabsTrigger value="reccuring" className="text-xs">Recurring</TabsTrigger>
           <TabsTrigger value="previous" className="text-xs">Previous</TabsTrigger>
           <TabsTrigger value="completed" className="text-xs">Completed</TabsTrigger>
         </TabsList>
@@ -147,7 +148,7 @@ export default function Tasks() {
               : "Create your first task to get started"
           }
           action={
-            !search && hasFullAccess && (
+            !search && (
               <Button
                 size="sm"
                 onClick={() => {
@@ -195,7 +196,7 @@ export default function Tasks() {
         task={editTask}
         teams={teams}
         members={members}
-        organizations={organizations}
+        workspaces={workspaces}
         onSaved={reload} // ✅ IMPORTANT FIX
       />
     </div>

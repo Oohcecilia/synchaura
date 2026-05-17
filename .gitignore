@@ -5,3 +5,4 @@ build/
 .env.local
 docker-compose.yml
 backup.txt
+entities

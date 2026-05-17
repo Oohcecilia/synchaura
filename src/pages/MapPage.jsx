@@ -28,7 +28,7 @@ export default function MapPage() {
     tasks,
     teams,
     members,
-    organizations,
+    workspaces,
     loading,
   } = useAppData();
 
@@ -190,7 +190,7 @@ export default function MapPage() {
         task={editTask}
         teams={teams}
         members={members}
-        organizations={organizations}
+        workspaces={workspaces}
       />
     </div>
   );

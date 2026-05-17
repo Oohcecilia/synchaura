@@ -12,18 +12,19 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-import StatCard from "../components/StatCard";
-import TaskCard from "../components/TaskCard";
-import TaskFormDialog from "../components/TaskFormDialog";
-import TaskDetailDialog from "../components/TaskDetailDialog";
-import EmptyState from "../components/EmptyState";
+import StatCard from "@/components/StatCard";
+import TaskCard from "@/components/TaskCard";
+import BurndownChart from "@/components/BurndownChart";
+import TaskFormDialog from "@/components/TaskFormDialog";
+import TaskDetailDialog from "@/components/TaskDetailDialog";
+import EmptyState from "@/components/EmptyState";
 
 import { isToday, isPast, isFuture } from "date-fns";
 import { useAuth } from "@/lib/AuthContext";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
 
 export default function Dashboard() {
-  const { user, hasFullAccess } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   // =============================
   // GLOBAL DATA
@@ -32,14 +33,17 @@ export default function Dashboard() {
     tasks,
     teams,
     members,
-    organizations,
+    workspaces,
     loading,
     reload,
+    hasMembers,
+    hasTeams
   } = useAppData();
 
   // =============================
   // LOCAL STATE
   // =============================
+
   const [detailTask, setDetailTask] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editTask, setEditTask] = useState(null);
@@ -61,9 +65,7 @@ export default function Dashboard() {
   // SAFE DATA NORMALIZATION
   // =============================
   const safeTasks = useMemo(() => tasks ?? [], [tasks]);
-  const safeTeams = useMemo(() => teams ?? [], [teams]);
-  const safeMembers = useMemo(() => members ?? [], [members]);
-  const safeOrganizations = useMemo(() => organizations ?? [], [organizations]);
+
 
   // =============================
   // DATE PRE-CALC (performance boost)
@@ -136,48 +138,42 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {hasFullAccess && (
-          <Button
-            onClick={() => {
-              setEditTask(null);
-              setShowForm(true);
-            }}
-            className="rounded-xl shadow-lg shadow-primary/25"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Task
-          </Button>
-        )}
+        <Button
+          onClick={() => {
+            setEditTask(null);
+            setShowForm(true);
+          }}
+          className="rounded-xl shadow-lg shadow-primary/25"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          New Task
+        </Button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Tasks" value={tasks.length} icon={CheckSquare} />
-        <StatCard title="Today" value={todayTasks.length} icon={Clock} />
-        <StatCard title="Overdue" value={overdueTasks.length} icon={AlertTriangle} />
-
-        {hasFullAccess && (
-          <StatCard title="Teams" value={teams.length} icon={Users} />
-        )}
+        <StatCard title="Total Tasks" value={tasks.length} icon={CheckSquare} trend={0} className />
+        <StatCard title="Today" value={todayTasks.length} icon={Clock} trend={0} className />
+        {hasTeams && (<StatCard title="Overdue" value={overdueTasks.length} icon={AlertTriangle} trend={0} className />)}
+        <StatCard title="Teams" value={teams.length} icon={Users} trend={0} className />
       </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {hasFullAccess && (
-          <Button
-            variant="outline"
-            className="rounded-xl h-auto py-3 justify-start"
-            onClick={() => {
-              setEditTask(null);
-              setShowForm(true);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2 text-primary" />
-            <span className="text-xs font-medium">Add Task</span>
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          className="rounded-xl h-auto py-3 justify-start"
+          onClick={() => {
+            setEditTask(null);
+            setShowForm(true);
+          }}
+        >
+          <Plus className="h-4 w-4 mr-2 text-primary" />
+          <span className="text-xs font-medium">Add Task</span>
+        </Button>
 
-        {hasFullAccess && (
+
+        {hasTeams && (
           <Link to="/teams">
             <Button
               variant="outline"
@@ -189,7 +185,7 @@ export default function Dashboard() {
           </Link>
         )}
 
-        {hasFullAccess && (
+        {hasMembers && (
           <Link to="/members">
             <Button
               variant="outline"
@@ -201,6 +197,7 @@ export default function Dashboard() {
           </Link>
         )}
 
+
         <Link to="/calendar">
           <Button
             variant="outline"
@@ -211,6 +208,9 @@ export default function Dashboard() {
           </Button>
         </Link>
       </div>
+
+      {/* Burndown Chart */}
+      <BurndownChart tasks={tasks} />
 
       {/* Recent Tasks */}
       <div>
@@ -231,18 +231,17 @@ export default function Dashboard() {
             title="No tasks yet"
             description="Create your first task to get started"
             action={
-              hasFullAccess && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setEditTask(null);
-                    setShowForm(true);
-                  }}
-                >
-                  Create Task
-                </Button>
-              )
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditTask(null);
+                  setShowForm(true);
+                }}
+              >
+                Create Task
+              </Button>
             }
+            className
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -252,6 +251,8 @@ export default function Dashboard() {
                 task={task}
                 members={members}
                 onClick={(t) => setDetailTask(t)}
+                onComplete
+                onReopen
               />
             ))}
           </div>
@@ -280,7 +281,7 @@ export default function Dashboard() {
         task={editTask}
         teams={teams}
         members={members}
-        organizations={organizations}
+        workspaces={workspaces}
         onSaved={reload} // ✅ manual refresh fallback
       />
     </div>

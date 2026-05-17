@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import {
   Plus,
   Building2,
+  User,
   Users,
   Trash2,
 } from "lucide-react";
@@ -38,12 +39,12 @@ import {
 import { getDB } from "@/db/couch";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
 
-export default function Organizations() {
+export default function Workspace() {
   const { user, setUser } = useAuth();
 
   // ✅ GLOBAL REAL-TIME DATA
   const {
-    organizations,
+    workspaces,
     teams,
     loading,
     reload,
@@ -154,7 +155,7 @@ export default function Organizations() {
       // ✅ optional manual refresh (fallback)
       reload?.();
     } catch (err) {
-      console.error("❌ Save organization error:", err);
+      console.error("❌ Save workspace error:", err);
     }
   };
 
@@ -175,9 +176,10 @@ export default function Organizations() {
       // optional fallback
       reload?.();
     } catch (err) {
-      console.error("❌ Delete organization error:", err);
+      console.error("❌ Delete workspace error:", err);
     }
   };
+
 
   // -------------------------
   // LOADING
@@ -199,29 +201,31 @@ export default function Organizations() {
       {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold">Organizations</h1>
+          <h1 className="text-2xl font-bold">Workspaces</h1>
+          { }
           <p className="text-sm text-muted-foreground">
-            {organizations.length} organizations
+            {workspaces.length} workspace
           </p>
         </div>
 
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" />
-          Organization
+          Workspace
         </Button>
       </div>
 
       {/* EMPTY STATE */}
-      {organizations.length === 0 ? (
+      {workspaces.length === 0 ? (
         <EmptyState
           icon={Building2}
-          title="No organizations yet"
-          description="Create an organization to get started"
-          action={<Button onClick={openCreate}>Create Organization</Button>}
+          title="No workspaces yet"
+          description="Create an workspace to get started"
+          action={<Button onClick={openCreate}>Create Workspace</Button>}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {organizations.map((org) => {
+          {workspaces.map((org) => {
+            const isPersonal = org?.account_type == "personal";
             const orgTeams = teams.filter(
               (t) => t.org_id === org._id
             );
@@ -245,16 +249,26 @@ export default function Organizations() {
 
                 {/* CONTENT */}
                 <div className="flex items-center gap-3">
-                  <Building2 className="h-5 w-5 text-primary" />
+                  <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Building2 className="h-5 w-5 text-primary" />
+                  </div>
                   <div>
                     <h3 className="font-semibold text-sm">
                       {org.name}
                     </h3>
+
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Users className="h-3 w-3" />
-                      {orgTeams.length} team
-                      {orgTeams.length !== 1 ? "s" : ""}
+                      {isPersonal ? (
+                        <User className="h-3 w-3" />
+                      ) : (
+                        <Users className="h-3 w-3" />
+                      )}
+
+                      {isPersonal
+                        ? "Personal"
+                        : `${orgTeams.length} team${orgTeams.length !== 1 ? "s" : ""}`}
                     </p>
+
                   </div>
                 </div>
 
@@ -274,10 +288,10 @@ export default function Organizations() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editOrg ? "Edit Organization" : "New Organization"}
+              {editOrg ? "Edit Workspace" : "New Workspace"}
             </DialogTitle>
             <DialogDescription>
-              Create a new organization or update existing team details.
+              Create a new workspace or update existing team details.
             </DialogDescription>
           </DialogHeader>
 
@@ -329,7 +343,7 @@ export default function Organizations() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete Organization
+              Delete Workspace
             </AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{deleteOrg?.name}"?

@@ -75,21 +75,27 @@ export default function NotificationBell({ position = "right" }) {
   // LOAD NOTIFICATIONS
   // ----------------------------
   const load = useCallback(async () => {
-    if (!user) return;
+    if (!user?.user?.id) return;
+
+    const userId = user.user.id;
 
     try {
-      const res = await getNotifications(user);
+      const res = await getNotifications(userId);
 
       const notifications = res?.notifications || [];
 
       setNotifications(notifications);
 
       const unread = notifications.filter((n) => {
-        const readList = Array.isArray(n.read) ? n.read : [];
-        return !readList.includes(user.id);
+        const readList = Array.isArray(n.read)
+          ? n.read
+          : [];
+
+        return !readList.includes(userId);
       }).length;
 
       setUnreadCount(unread);
+
     } catch (err) {
       console.error("Failed to load notifications:", err);
     }
@@ -137,22 +143,9 @@ export default function NotificationBell({ position = "right" }) {
     };
   }, [load]);
 
-  // useEffect(() => {
-  //   if (!shouldReload) return;
 
-  //   const timer = setTimeout(() => {
-  //     window.location.reload();
-  //   }, 3000);
-
-  //   return () => clearTimeout(timer);
-  // }, [shouldReload]);
-
-
-
-  // ----------------------------
-  // OUTSIDE CLICK CLOSE
-  // ----------------------------
   useEffect(() => {
+
     const handler = (e) => {
       if (ref.current && !ref.current.contains(e.target)) {
         setOpen(false);
@@ -494,7 +487,7 @@ export default function NotificationBell({ position = "right" }) {
                             }}
                             className={cn(
                               "text-[10px] px-2 py-1 rounded-md text-white transition",
-                               n.status === "accepted" || n.status === "rejected"
+                              n.status === "accepted" || n.status === "rejected"
                                 ? "bg-gray-400 cursor-not-allowed"
                                 : "bg-red-500 hover:bg-red-600"
                             )}

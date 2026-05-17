@@ -42,7 +42,7 @@ export default function Teams() {
   const { user, hasFullAccess } = useAuth();
 
   const [teams, setTeams] = useState([]);
-  const [organizations, setOrganizations] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
   const [members, setMembers] = useState([]);
 
   const [loading, setLoading] = useState(true);
@@ -72,7 +72,7 @@ export default function Teams() {
     const res = await fetchedUserData(user);
 
     setTeams(res.teams || []);
-    setOrganizations(res.organizations || []);
+    setWorkspaces(res.workspaces || []);
 
     // remove owners globally
     setMembers((res.members || []));
@@ -106,9 +106,9 @@ export default function Teams() {
   // =========================
   const orgMap = useMemo(() => {
     return Object.fromEntries(
-      (organizations || []).map((o) => [o._id, o])
+      (workspaces || []).map((o) => [o._id, o])
     );
-  }, [organizations]);
+  }, [workspaces]);
 
   // =========================
   // FILTER MEMBERS BY SELECTED ORG
@@ -382,7 +382,7 @@ export default function Teams() {
                 </SelectTrigger>
 
                 <SelectContent>
-                  {organizations.map((org) => (
+                  {workspace.map((org) => (
                     <SelectItem key={org._id} value={org._id}>
                       {org.name}
                     </SelectItem>

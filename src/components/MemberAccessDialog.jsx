@@ -23,7 +23,7 @@ export default function MemberAccessDialog({
   onOpenChange,
   member,
   teams = [],
-  organizations = [],
+  workspace = [],
 }) {
   const { user, setUser } = useAuth();
 
@@ -40,11 +40,11 @@ export default function MemberAccessDialog({
 
     const defaultOrg =
       member.access_rights?.[0]?.org_id ||
-      organizations?.[0]?._id ||
+      workspace?.[0]?._id ||
       "";
 
     setSelectedOrg(defaultOrg);
-  }, [member, open, organizations]);
+  }, [member, open, workspace]);
 
   // =========================
   // SYNC ROLE + TEAMS WHEN ORG CHANGES
@@ -137,11 +137,11 @@ const handleSave = async () => {
       await db.put(updatedUserDoc);
 
       // 6. Update local state if the user edited themselves
-      if (member._id === user?._id) {
-        setUser?.(updatedUserDoc);
-        // Sync with session so page refreshes don't lose the new role
-        sessionStorage.setItem("user", JSON.stringify(updatedUserDoc));
-      }
+      // if (member._id === user?._id) {
+      //   setUser?.(updatedUserDoc);
+      //   // Sync with session so page refreshes don't lose the new role
+      //   sessionStorage.setItem("user", JSON.stringify(updatedUserDoc));
+      // }
 
       // 7. Notify components to refresh UI
       window.dispatchEvent(new Event("user:updated"));
@@ -182,7 +182,7 @@ const handleSave = async () => {
             <option value="" className="bg-[hsl(var(--background))]">
               Select organization
             </option>
-            {organizations.map((org) => (
+            {workspace.map((org) => (
               <option
                 key={org._id}
                 value={org._id}

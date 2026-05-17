@@ -8,122 +8,172 @@ import React, {
 } from "react";
 
 import { apiRequest } from "@/api/client";
-import { getDB, resetLocalDB } from "@/db/couch";
-import usePouchChanges from "@/hooks/usePouchChanges";
-
+import { resetLocalDB } from "@/db/couch";
 
 const AuthContext = createContext();
 
 // -------------------------
-const STORAGE_KEYS = {
-  ID: "id",
-  TOKEN: "token",
-  DB: "dbName",
-  ACCESS_RIGHTS: "access_rights",
-};
-// -------------------------
+
+const STORAGE_KEY = "session";
 
 export const AuthProvider = ({ children }) => {
+  const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
+  const [activeWorkspace, setActiveWorkspace] = useState(null);
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
 
+  // =========================
+  // SAVE SESSION
+  // =========================
+  const saveSession = useCallback((data) => {
+    if (!data) return;
 
-
-
-  usePouchChanges(user, async (doc) => {
-    if (!doc || !user?.id) return;
-
-    // 🎯 Only react to CURRENT USER document
-    if (doc._id !== user.id) return;
-
-    console.log("👤 Real-time user update detected");
-
-    // 🔥 Merge with existing session (important)
-    const updatedUser = {
-      ...user,
-      ...doc,
+    const safeSession = {
+      userId: data.userId,
+      token: data.token,
+      workspaceId: data.workspaceId,
     };
 
-    setUser(updatedUser);
-
-    // ✅ keep localStorage in sync
-    localStorage.setItem(STORAGE_KEYS.ACCESS_RIGHTS, JSON.stringify(doc.access_rights || []));
-  }, null); // 
-
-  // -------------------------
-  // SAVE SESSION
-  // -------------------------
-  const saveSession = useCallback((session) => {
-    if (!session) return;
-
-    localStorage.setItem(STORAGE_KEYS.ID, session.id || "");
-    localStorage.setItem(STORAGE_KEYS.TOKEN, session.token || "");
-    localStorage.setItem(STORAGE_KEYS.DB, session.dbName || "");
-    localStorage.setItem(
-      STORAGE_KEYS.ACCESS_RIGHTS,
-      JSON.stringify(session.access_rights || [])
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(safeSession));
+    setSession(safeSession);
   }, []);
 
-  // -------------------------
-  // CLEAR SESSION
-  // -------------------------
-  const clearSession = useCallback(() => {
-    Object.values(STORAGE_KEYS).forEach((key) =>
-      localStorage.removeItem(key)
-    );
+  // =========================
+  // LOGOUT
+  // =========================
+  const logout = useCallback(async () => {
+    setSession(null);
+    setUser(null);
+    setActiveWorkspace(null);
+    setIsAuthenticated(false);
+
+    localStorage.removeItem(STORAGE_KEY);
+
+    try {
+      await resetLocalDB();
+    } catch (e) {
+      console.warn("DB reset failed", e);
+    }
   }, []);
 
-  // -------------------------
-  // INIT SESSION (ON RELOAD)
-  // -------------------------
-  useEffect(() => {
-    const init = () => {
-      try {
-        const id = localStorage.getItem(STORAGE_KEYS.ID);
-        const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-        const dbName = localStorage.getItem(STORAGE_KEYS.DB);
+  // =========================
+  // VERIFY SESSION (backend truth check)
+  // =========================
+  const verifySession = useCallback(async (sessionData) => {
+    try {
 
-        let access_rights = [];
-        try {
-          access_rights = JSON.parse(
-            localStorage.getItem(STORAGE_KEYS.ACCESS_RIGHTS) || "[]"
-          );
-        } catch {
-          access_rights = [];
-        }
+      const res = await apiRequest("/auth/verify-session", {
+        method: "POST",
+        body: {
+          userId: sessionData.userId,
+          token: sessionData.token,
+        },
+      });
 
-        if (token && id && dbName) {
-          const session = {
-            id,
-            token,
-            dbName,
-            access_rights,
-          };
+      if (!res?.success || !res?.user) {
+        return false;
+      }
 
-          setUser(session);
-          setIsAuthenticated(true);
-        } else {
-          setUser(null);
-          setIsAuthenticated(false);
-        }
-      } catch (err) {
-        console.error("Auth init error:", err);
+      setUser(res.user);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }, []);
+
+  // =========================
+  // INIT SESSION (boot + offline-first)
+  // =========================
+useEffect(() => {
+  const init = async () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+
+      if (!stored) {
+        setSession(null);
         setUser(null);
         setIsAuthenticated(false);
-      } finally {
-        setIsLoadingAuth(false);
+        return;
+      }
+
+      const parsed = JSON.parse(stored);
+
+      if (!parsed?.token || !parsed?.userId) {
+        setSession(null);
+        setUser(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+
+      setSession(parsed);
+
+      // 📴 OFFLINE
+      if (!navigator.onLine) {
+        setIsAuthenticated(true);
+        setUser(parsed.user || null);
+        return;
+      }
+
+      // 🌐 ONLINE VERIFY
+      const valid = await verifySession(parsed);
+
+      if (!valid) {
+        setSession(null);
+        setUser(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+
+      setIsAuthenticated(true);
+
+    } catch (err) {
+      console.error("Auth init error:", err);
+      setSession(null);
+      setUser(null);
+      setIsAuthenticated(false);
+      localStorage.removeItem(STORAGE_KEY);
+    } finally {
+      setIsLoadingAuth(false); // ✅ single source of truth
+    }
+  };
+
+  init();
+}, [verifySession]);
+
+  // =========================
+  // AUTO REVALIDATION (when internet comes back)
+  // =========================
+  useEffect(() => {
+    const handleOnline = async () => {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored);
+
+      const valid = await verifySession(parsed);
+
+      if (!valid) {
+        await logout();
+      } else {
+        setIsAuthenticated(true);
       }
     };
 
-    init();
-  }, []);
+    window.addEventListener("online", handleOnline);
 
-  // -------------------------
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [verifySession, logout]);
+
+  // =========================
   // LOGIN
-  // -------------------------
+  // =========================
   const login = useCallback(async ({ phone, pin }) => {
     try {
       setIsLoadingAuth(true);
@@ -131,30 +181,24 @@ export const AuthProvider = ({ children }) => {
 
       const data = await apiRequest("/login", {
         method: "POST",
-        body: {
-          username: phone,
-          password: pin,
-        },
+        body: { username: phone, password: pin },
       });
 
       if (!data?.success) {
         throw new Error(data?.error || "Invalid credentials");
       }
 
-      const { token, db, user_session } = data;
-
-      const session = {
-        id: user_session?.id || user_session?._id,
-        token,
-        dbName: db,
-        access_rights: user_session?.access_rights || [],
+      const sessionData = {
+        userId: data.user_session.id,
+        token: data.token,
+        workspaceId: data.db,
       };
 
-      saveSession(session);
-      setUser(session);
+      saveSession(sessionData);
+      setUser(data.user_session);
       setIsAuthenticated(true);
 
-      return session;
+      return sessionData;
     } catch (err) {
       setAuthError(err.message);
       throw err;
@@ -163,9 +207,9 @@ export const AuthProvider = ({ children }) => {
     }
   }, [saveSession]);
 
-  // -------------------------
+  // =========================
   // REGISTER
-  // -------------------------
+  // =========================
   const register = useCallback(async (formData) => {
     try {
       setIsLoadingAuth(true);
@@ -173,93 +217,59 @@ export const AuthProvider = ({ children }) => {
 
       const data = await apiRequest("/register", {
         method: "POST",
-        body: {
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          username: formData.phone,
-          password: formData.pin,
-          role: formData.role,
-          orgName: formData.orgName,
-          orgDesc: formData.orgDesc,
-        },
+        body: formData,
       });
 
       if (!data?.success) {
         throw new Error(data?.error || "Registration failed");
       }
 
-      const { token, db, user } = data;
-
-      const session = {
-        id: user?.id || user?._id,
-        token,
-        dbName: db,
-        access_rights: user?.access_rights || [],
+      const sessionData = {
+        userId: data.user_id,
+        token: data.token,
+        workspaceId: data.db,
       };
 
-      saveSession(session);
-      setUser(session);
+      saveSession(sessionData);
+      setUser(data.user);
       setIsAuthenticated(true);
 
-      return session;
+      return data;
     } catch (err) {
-      setAuthError(err.message);
       throw err;
     } finally {
       setIsLoadingAuth(false);
     }
   }, [saveSession]);
 
-  // -------------------------
-  // LOGOUT
-  // -------------------------
-  const logout = useCallback(() => {
-    setUser(null);
-    setIsAuthenticated(false);
-    setAuthError(null);
-    clearSession();
-    resetLocalDB();
-  }, [clearSession]);
-
-  // -------------------------
-  // ROLE HELPERS
-  // -------------------------
-  const hasFullAccess = useMemo(() => {
-    if (!Array.isArray(user?.access_rights)) return false;
-
-    return user.access_rights.some((a) =>
-      ["owner", "admin"].includes(a.role)
-    );
-  }, [user]);
-
-  // -------------------------
+  // =========================
   // CONTEXT VALUE
-  // -------------------------
-  const value = useMemo(
-    () => ({
-      user,
-      isAuthenticated,
-      isLoadingAuth,
-      authError,
-      hasFullAccess,
-      login,
-      register,
-      logout,
-      setUser,
-      setAuthError,
-    }),
-    [
-      user,
-      isAuthenticated,
-      isLoadingAuth,
-      authError,
-      hasFullAccess,
-      login,
-      register,
-      setUser,
-      logout,
-    ]
-  );
+  // =========================
+  const value = useMemo(() => ({
+    session,
+    user,
+    activeWorkspace,
+
+    isAuthenticated,
+    isLoadingAuth,
+    authError,
+
+    login,
+    register,
+    logout,
+    setUser,
+    setAuthError,
+  }), [
+    session,
+    user,
+    activeWorkspace,
+    isAuthenticated,
+    isLoadingAuth,
+    authError,
+    login,
+    register,
+    logout,
+  ]);
 
   return (
     <AuthContext.Provider value={value}>

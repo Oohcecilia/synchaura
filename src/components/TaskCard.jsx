@@ -1,10 +1,10 @@
-import { Calendar, MapPin, Users, CheckCircle2, Clock } from "lucide-react";
+import { Calendar, MapPin, Users, CheckCircle2, Clock, RefreshCw, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, isPast, isToday, differenceInHours } from "date-fns";
+
 import { getDB } from "@/db/couch";
 import { createRecord } from "@/db/helpers";
 import { useAuth } from "@/lib/AuthContext";
-
 
 
 const priorityConfig = {
@@ -18,19 +18,63 @@ const statusConfig = {
   today: { label: "Today", className: "bg-primary/10 text-primary" },
   previous: { label: "Overdue", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
   completed: { label: "Completed", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  recurring: { label: "Recurring", className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
 };
 
-function getDeadlineUrgency(due_date, status) {
-  if (!due_date || status === "completed") return null;
+
+function getDeadlineUrgency(due_date, status, end_time) {
+
+  if (status === "completed") return null;
+
+  const now = new Date();
   const due = new Date(due_date);
-  const hoursUntil = differenceInHours(due, new Date());
-  if (isPast(due) && !isToday(due)) return "overdue";
-  if (isToday(due)) return "today";
+
+  // -----------------------------
+  // 1. OVERDUE (date already passed)
+  // -----------------------------
+  if (due_date && isPast(due) && !isToday(due)) {
+    return "overdue";
+  }
+
+  // -----------------------------
+  // 2. TODAY LOGIC (includes end_time)
+  // -----------------------------
+  if (isToday(due)) {
+    if (!end_time) return "today";
+
+    const [h, m] = end_time.split(":").map(Number);
+
+    const endDateTime = new Date(due);
+    endDateTime.setHours(h, m, 0, 0);
+
+    if (now > endDateTime) return "overdue";
+    if (differenceInHours(endDateTime, now) <= 2) return "urgent";
+
+    return "today";
+  }
+
+  // -----------------------------
+  // 3. SOON (next 48h)
+  // -----------------------------
+  const hoursUntil = differenceInHours(due, now);
   if (hoursUntil <= 48) return "soon";
+
   return null;
 }
 
-export default function TaskCard({ task, members, onClick }) {
+const intervalLabel = (task) => {
+  if (!task.recurring_interval) return null;
+  const count = task.recurring_interval_count || 1;
+  const map = { daily: "day", weekly: "week", monthly: "month", yearly: "year" };
+  return count === 1 ? `Every ${map[task.recurring_interval]}` : `Every ${count} ${map[task.recurring_interval]}s`;
+};
+
+
+
+
+
+export default function TaskCard({ task, members, onClick, onComplete, onReopen }) {
+
   const { user } = useAuth();
   const priority = priorityConfig[task.priority] || priorityConfig.medium;
   const status = statusConfig[task.status] || statusConfig.upcoming;
@@ -38,100 +82,100 @@ export default function TaskCard({ task, members, onClick }) {
     .map((id) => members?.find((m) => m.id === id))
     .filter(Boolean);
 
-  const urgency = getDeadlineUrgency(task.due_date, task.status);
+  const urgency = getDeadlineUrgency(task.due_date, task.status, task.end_date);
   const isCompleted = task.status === "completed";
-
-  const handleComplete = async (task) => {
-  try {
-
-    const db = getDB(user?.id);
-    // 1. UPDATE TASK IN POUCHDB
-    // We must ensure the current _rev is included for the update to work
-    const updatedTask = {
-      ...task,
-      status: "completed",
-      updated_at: new Date().toISOString(),
-    };
-
-    // Assuming 'db' is your PouchDB instance for tasks
-    // PouchDB uses .put() directly on the instance, not a table string
-    await db.put(updatedTask);
-
-    // 2. CREATE NOTIFICATION
-    // Assuming createRecord is already set up to handle PouchDB logic
-    await createRecord(user, "notifications", {
-      type: "notification", // Crucial for your earlier filter logic!
-      category: "task_updated",     // Added so your filter doesn't hide it
-      title: "Task completed",
-      message: `"${task.title}" was marked as completed.`,
-      task_id: task._id,
-      org_id: task.org_id ?? null,
-      team_id: task.team_id ?? null,
-      user_id: user?.id ?? null, // Best to assign the user who did it
-      read: [],
-    });
-
-    // 3. TRIGGER UI UPDATE
-    window.dispatchEvent(
-      new CustomEvent("route:changed", {
-        detail: { route: window.location.pathname }
-      })
-    );
-    window.dispatchEvent(new Event("notifications:changed"));
-
-  } catch (err) {
-    if (err.name === 'conflict') {
-      console.error("Conflict: This task was updated elsewhere.");
-    } else {
-      console.error("Complete task failed:", err);
-    }
-  }
-};
 
   const urgencyBorder = {
     overdue: "border-red-400 dark:border-red-600",
-    today: "border-amber-400 dark:border-amber-500",
-    soon: "border-blue-300 dark:border-blue-500",
+    today: "border-blue-300 dark:border-blue-500",
+    soon: "border-amber-400 dark:border-amber-500",
+  };
+
+
+  const handleComplete = async (task) => {
+    try {
+
+      const db = getDB(user?.id);
+      
+      const updatedTask = {
+        ...task,
+        status: "completed",
+        updated_at: new Date().toISOString(),
+      };
+
+      // Assuming 'db' is your PouchDB instance for tasks
+      // PouchDB uses .put() directly on the instance, not a table string
+      await db.put(updatedTask);
+
+      // 2. CREATE NOTIFICATION
+      // Assuming createRecord is already set up to handle PouchDB logic
+      await createRecord(user, "notifications", {
+        type: "notification", // Crucial for your earlier filter logic!
+        category: "task_updated",     // Added so your filter doesn't hide it
+        title: "Task completed",
+        message: `"${task.title}" was marked as completed.`,
+        task_id: task._id,
+        org_id: task.org_id ?? null,
+        team_id: task.team_id ?? null,
+        user_id: user?.id ?? null, // Best to assign the user who did it
+        read: [],
+      });
+
+      // 3. TRIGGER UI UPDATE
+      window.dispatchEvent(
+        new CustomEvent("route:changed", {
+          detail: { route: window.location.pathname }
+        })
+      );
+      window.dispatchEvent(new Event("notifications:changed"));
+
+    } catch (err) {
+      if (err.name === 'conflict') {
+        console.error("Conflict: This task was updated elsewhere.");
+      } else {
+        console.error("Complete task failed:", err);
+      }
+    }
   };
 
   return (
     <div
       onClick={() => onClick?.(task)}
       className={cn(
-        "bg-card border rounded-md p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 group relative",
+        "bg-card border rounded-xl p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 group relative",
         urgency ? urgencyBorder[urgency] : "border-border hover:border-primary/20"
       )}
     >
       {urgency && urgency !== "completed" && (
-        <div
-          className={cn(
-            "absolute left-0 top-0 bottom-0 w-2 rounded-l-xl",
-            urgency === "overdue" && "bg-red-500",
-            urgency === "today" && "bg-amber-400",
-            urgency === "soon" && "bg-blue-400"
-          )}
-        />
+        <div className={cn(
+          "absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl",
+          urgency === "overdue" && "bg-red-500",
+          urgency === "today" && "bg-blue-400 ",
+          urgency === "soon" && "bg-amber-400",
+        )} />
       )}
       <div className="flex items-start justify-between gap-3">
         <h3 className={cn("text-sm font-semibold group-hover:text-primary transition-colors line-clamp-2", isCompleted && "line-through text-muted-foreground")}>
           {task.title}
         </h3>
+
+
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap", priority.className)}>
             {priority.label}
           </span>
+          {task.status === "recurring" && (
+            <span className="h-6 w-6 rounded-full flex items-center justify-center text-purple-500">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </span>
+          )}
           {!isCompleted && (
             <button
               onClick={(e) => { e.stopPropagation(); handleComplete(task); }}
-              title="Mark as completed"
-              className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap
-                  bg-emerald-50 text-emerald-700
-                  dark:bg-emerald-900/40 dark:text-emerald-300
-                  hover:bg-emerald-100 dark:hover:bg-emerald-900/30
-                  transition-colors
-              "
+              title="Mark this occurrence done"
+              className="h-6 w-6 text-emerald-700 rounded-full flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
             >
-              <CheckCircle2 className="h-4 w-4" /> Complete
+              <CheckCircle2 className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -170,6 +214,28 @@ export default function TaskCard({ task, members, onClick }) {
         )}
       </div>
 
+      {task.status === "recurring" && intervalLabel(task) && (
+        <div className="flex items-center gap-1 mt-2 text-[10px] font-medium text-purple-600 dark:text-purple-400">
+          <RefreshCw className="h-3 w-3" />
+          {intervalLabel(task)}
+          {task.next_due_date && (
+            <span className="text-muted-foreground font-normal ml-1">
+              · next {format(new Date(task.next_due_date), "MMM d")}
+            </span>
+          )}
+        </div>
+      )}
+
+      {isCompleted && task.recurring_interval && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onReopen?.(task); }}
+          className="mt-3 flex items-center gap-1.5 text-[11px] text-purple-600 dark:text-purple-400 hover:underline font-medium"
+        >
+          <RotateCcw className="h-3 w-3" />
+          Reopen
+        </button>
+      )}
+
       {assignedMembers.length > 0 && (
         <div className="flex items-center gap-1.5 mt-3">
           <Users className="h-3 w-3 text-muted-foreground" />
@@ -198,3 +264,7 @@ export default function TaskCard({ task, members, onClick }) {
     </div>
   );
 }
+
+
+
+
