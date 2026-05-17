@@ -20,7 +20,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription
+  DialogDescription,
 } from "@/components/ui/dialog";
 
 import EmptyState from "../components/EmptyState";
@@ -38,71 +38,45 @@ import {
 
 import { getDB } from "@/db/couch";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
+import { nanoid } from "nanoid";
 
 export default function Workspace() {
-  const { user, setUser } = useAuth();
-
-  // ✅ GLOBAL REAL-TIME DATA
-  const {
-    workspaces,
-    teams,
-    loading,
-    reload,
-  } = useAppData();
+  const { user, session, setUser } = useAuth();
+  const { workspaces, teams, loading, reload } = useAppData();
 
   const [showForm, setShowForm] = useState(false);
   const [editOrg, setEditOrg] = useState(null);
   const [deleteOrg, setDeleteOrg] = useState(null);
+  const [form, setForm] = useState({ name: "", description: "" });
 
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem("theme");
-    return saved ? saved === "dark" : false;
-  });
-
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-  });
-
-  // -------------------------
-  // THEME
-  // -------------------------
   useEffect(() => {
     const theme = getSavedTheme();
-    setDarkMode(applyTheme(theme));
+    applyTheme(theme);
   }, []);
 
-  // -------------------------
-  // OPEN MODALS
-  // -------------------------
   const openCreate = () => {
     setEditOrg(null);
     setForm({ name: "", description: "" });
     setShowForm(true);
   };
 
-  const openEdit = (org) => {
-    setEditOrg(org);
+  const openEdit = (workspace) => {
+    setEditOrg(workspace);
     setForm({
-      name: org.name || "",
-      description: org.description || "",
+      name: workspace.name || "",
+      description: workspace.description || "",
     });
     setShowForm(true);
   };
 
-  // -------------------------
-  // SAVE (CREATE / UPDATE)
-  // -------------------------
   const handleSave = async (e) => {
     e.preventDefault();
 
-    const db = getDB(user?.id);
-    if (!db) return;
+    if (!session?.userId) return;
+
+    const db = getDB(session.userId);
 
     try {
-      // =========================
-      // UPDATE
-      // =========================
       if (editOrg?._id) {
         const existing = await db.get(editOrg._id);
 
@@ -112,78 +86,72 @@ export default function Workspace() {
           description: form.description || "",
           updated_at: new Date().toISOString(),
         });
-      }
+      } else {
+        const now = new Date().toISOString();
+        const workspaceId = `ws_${nanoid()}`;
+        const membershipId = `mem_${nanoid()}`;
 
-      // =========================
-      // CREATE
-      // =========================
-      else {
-        const newOrgId = `org_${crypto.randomUUID()}`;
-
-        const newOrg = {
-          _id: newOrgId,
-          type: "organization",
+        const newWorkspace = {
+          _id: workspaceId,
+          type: "workspace",
+          account_type: "team",
           name: form.name,
           description: form.description || "",
-          created_at: new Date().toISOString(),
+          owner_id: session.userId,
+          created_at: now,
         };
 
-        await db.put(newOrg);
-
-        // 🔥 update user access rights
-        const userDoc = await db.get(user.id);
-
-        const updatedUser = {
-          ...userDoc,
-          access_rights: [
-            ...(userDoc.access_rights || []),
-            {
-              org_id: newOrgId,
-              role: "owner",
-            },
-          ],
+        const membership = {
+          _id: membershipId,
+          type: "membership",
+          user_id: session.userId,
+          workspace_id: workspaceId,
+          role: "owner",
+          team_ids: [],
+          created_at: now,
         };
 
-        await db.put(updatedUser);
+        await db.bulkDocs([newWorkspace, membership]);
 
-        setUser(updatedUser);
-        sessionStorage.setItem("user", JSON.stringify(updatedUser));
+        const existingAccess = user?.memberships || user?.access_rights || [];
+        const nextAccess = [
+          ...existingAccess,
+          {
+            workspace_id: workspaceId,
+            role: "owner",
+            team_ids: [],
+          },
+        ];
+
+        setUser?.({
+          ...(user || {}),
+          memberships: nextAccess,
+          access_rights: nextAccess,
+        });
       }
 
       setShowForm(false);
-
-      // ✅ optional manual refresh (fallback)
       reload?.();
     } catch (err) {
-      console.error("❌ Save workspace error:", err);
+      console.error("Save workspace error:", err);
     }
   };
 
-  // -------------------------
-  // DELETE
-  // -------------------------
   const handleDelete = async () => {
-    if (!deleteOrg) return;
+    if (!deleteOrg || !session?.userId) return;
 
     try {
-      const db = getDB(user?.id);
+      const db = getDB(session.userId);
       const doc = await db.get(deleteOrg._id);
 
       await db.remove(doc);
-
       setDeleteOrg(null);
-
-      // optional fallback
       reload?.();
     } catch (err) {
-      console.error("❌ Delete workspace error:", err);
+      console.error("Delete workspace error:", err);
     }
   };
 
-
-  // -------------------------
-  // LOADING
-  // -------------------------
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -192,19 +160,13 @@ export default function Workspace() {
     );
   }
 
-  // -------------------------
-  // UI
-  // -------------------------
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-
-      {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">Workspaces</h1>
-          { }
           <p className="text-sm text-muted-foreground">
-            {workspaces.length} workspace
+            {workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""}
           </p>
         </div>
 
@@ -214,67 +176,55 @@ export default function Workspace() {
         </Button>
       </div>
 
-      {/* EMPTY STATE */}
       {workspaces.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="No workspaces yet"
-          description="Create an workspace to get started"
+          description="Create a workspace to get started"
           action={<Button onClick={openCreate}>Create Workspace</Button>}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {workspaces.map((org) => {
-            const isPersonal = org?.account_type == "personal";
-            const orgTeams = teams.filter(
-              (t) => t.org_id === org._id
+          {workspaces.map((workspace) => {
+            const isPersonal = workspace?.account_type === "personal";
+            const workspaceTeams = teams.filter(
+              (team) => team.workspace_id === workspace._id || team.org_id === workspace._id
             );
 
             return (
               <div
-                key={org._id}
-                onClick={() => openEdit(org)}
+                key={workspace._id}
+                onClick={() => openEdit(workspace)}
                 className="bg-card border rounded-2xl p-5 cursor-pointer hover:shadow-lg relative group"
               >
-                {/* DELETE */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setDeleteOrg(org);
+                    setDeleteOrg(workspace);
                   }}
                   className="absolute top-3 right-3 p-1.5 rounded-lg bg-destructive/10 text-destructive"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
 
-                {/* CONTENT */}
                 <div className="flex items-center gap-3">
                   <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center">
                     <Building2 className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-sm">
-                      {org.name}
-                    </h3>
-
+                    <h3 className="font-semibold text-sm">{workspace.name}</h3>
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      {isPersonal ? (
-                        <User className="h-3 w-3" />
-                      ) : (
-                        <Users className="h-3 w-3" />
-                      )}
-
+                      {isPersonal ? <User className="h-3 w-3" /> : <Users className="h-3 w-3" />}
                       {isPersonal
                         ? "Personal"
-                        : `${orgTeams.length} team${orgTeams.length !== 1 ? "s" : ""}`}
+                        : `${workspaceTeams.length} team${workspaceTeams.length !== 1 ? "s" : ""}`}
                     </p>
-
                   </div>
                 </div>
 
-                {org.description && (
+                {workspace.description && (
                   <p className="text-xs text-muted-foreground mt-3">
-                    {org.description}
+                    {workspace.description}
                   </p>
                 )}
               </div>
@@ -283,15 +233,12 @@ export default function Workspace() {
         </div>
       )}
 
-      {/* FORM */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {editOrg ? "Edit Workspace" : "New Workspace"}
-            </DialogTitle>
+            <DialogTitle>{editOrg ? "Edit Workspace" : "New Workspace"}</DialogTitle>
             <DialogDescription>
-              Create a new workspace or update existing team details.
+              Create a new workspace or update existing workspace details.
             </DialogDescription>
           </DialogHeader>
 
@@ -300,9 +247,7 @@ export default function Workspace() {
               <Label>Name *</Label>
               <Input
                 value={form.name}
-                onChange={(e) =>
-                  setForm({ ...form, name: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
                 required
               />
             </div>
@@ -311,9 +256,7 @@ export default function Workspace() {
               <Label>Description</Label>
               <Textarea
                 value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
               />
             </div>
 
@@ -335,16 +278,10 @@ export default function Workspace() {
         </DialogContent>
       </Dialog>
 
-      {/* DELETE */}
-      <AlertDialog
-        open={!!deleteOrg}
-        onOpenChange={() => setDeleteOrg(null)}
-      >
+      <AlertDialog open={!!deleteOrg} onOpenChange={() => setDeleteOrg(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete Workspace
-            </AlertDialogTitle>
+            <AlertDialogTitle>Delete Workspace</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{deleteOrg?.name}"?
             </AlertDialogDescription>
@@ -352,9 +289,7 @@ export default function Workspace() {
 
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              Delete
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
