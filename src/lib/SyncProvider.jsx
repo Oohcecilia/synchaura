@@ -5,21 +5,10 @@ import SyncIndicator from "@/components/SyncIndicator";
 import { getDB } from "@/db/couch";
 import { isInitialized, markInitialized } from "@/db/meta";
 
-const SYNC_TIMEOUT_MS = 10000;
-
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Initial sync timed out")), ms);
-    }),
-  ]);
-}
-
 export default function SyncProvider({ children }) {
   const { isAuthenticated, session } = useAuth();
   const [status, setStatus] = useState("idle");
-  const [showSync, setShowSync] = useState(null);
+  const [showSync, setShowSync] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated || !session?.userId) {
@@ -29,7 +18,7 @@ export default function SyncProvider({ children }) {
 
     let alive = true;
 
-    async function init() {
+    async function initSyncInBackground() {
       let db;
 
       try {
@@ -38,46 +27,39 @@ export default function SyncProvider({ children }) {
 
         if (!alive) return;
 
-        if (exists) {
+        // Local-first: never block app rendering on replication. Existing DBs
+        // and first-run DBs both render immediately while sync runs/retries.
+        setShowSync(false);
+        setStatus(exists ? "idle" : "initializing");
+
+        await startSync({
+          id: session.userId,
+          onStatus: (nextStatus) => {
+            if (alive) setStatus(nextStatus);
+          },
+        });
+
+        if (!exists && db) {
+          await markInitialized(db);
+        }
+      } catch (err) {
+        console.warn("Background sync failed:", err);
+        if (alive) {
+          setStatus("error");
           setShowSync(false);
-          await startSync({
-            id: session.userId,
-            onStatus: setStatus,
-          });
-          return;
         }
 
-        setShowSync(true);
-        setStatus("initializing");
-
-        await withTimeout(
-          startSync({
-            id: session.userId,
-            onStatus: setStatus,
-          }),
-          SYNC_TIMEOUT_MS
-        );
-
-        await markInitialized(db);
-      } catch (err) {
-        console.error("Initial sync failed:", err);
-        setStatus("error");
-
-        // Do not block the whole app forever. The live sync layer retries in
-        // the background, and users can still use the local database offline.
         if (db) {
           try {
             await markInitialized(db);
           } catch (markErr) {
-            console.error("Failed to mark DB initialized after sync error:", markErr);
+            console.warn("Failed to mark DB initialized after sync error:", markErr);
           }
         }
-      } finally {
-        if (alive) setShowSync(false);
       }
     }
 
-    init();
+    initSyncInBackground();
 
     return () => {
       alive = false;
@@ -85,12 +67,10 @@ export default function SyncProvider({ children }) {
     };
   }, [isAuthenticated, session?.userId]);
 
-  if (showSync === null) return children;
-
   return (
     <>
       <SyncIndicator visible={showSync} status={status} />
-      {!showSync && children}
+      {children}
     </>
   );
 }
