@@ -1,8 +1,62 @@
+# =========================
+# React / Node
+# =========================
 node_modules/
 dist/
 build/
+.next/
+out/
+coverage/
+.vite/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment
 .env
-.env.local
+.env.*
+!.env.example
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing / Cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =========================
+# Project Specific
+# =========================
 docker-compose.yml
 backup.txt
-entities
+entities/
