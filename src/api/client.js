@@ -25,8 +25,11 @@ export async function apiRequest(
     }
 
     const token = getSessionToken();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const shouldUseTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0;
+    const controller = shouldUseTimeout ? new AbortController() : null;
+    const timeout = shouldUseTimeout
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
 
     const finalHeaders = {
       "Content-Type": "application/json",
@@ -43,10 +46,10 @@ export async function apiRequest(
         method,
         headers: finalHeaders,
         body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
+        signal: controller?.signal,
       });
     } finally {
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
     }
 
     const text = await res.text();
