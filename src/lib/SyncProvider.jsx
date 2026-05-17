@@ -5,7 +5,7 @@ import SyncIndicator from "@/components/SyncIndicator";
 import { getDB } from "@/db/couch";
 import { isInitialized, markInitialized } from "@/db/meta";
 
-const SYNC_TIMEOUT_MS = 30000;
+const SYNC_TIMEOUT_MS = 10000;
 
 function withTimeout(promise, ms) {
   return Promise.race([
