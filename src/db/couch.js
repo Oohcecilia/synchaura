@@ -1,58 +1,102 @@
-// import PouchDB from "pouchdb/dist/pouchdb.js"
-
-// let db = null
-
-// export function getDB(userId) {
-
-//   // if (!userId) {
-//   //   console.error("❌ user is not authenticated to access DB");
-//   //   return;
-//   // }
-
-//   if (!db) {
-//     db = new PouchDB(`teamstar_local_${userId}`);
-//   }
-
-//   return db;
-// }
-
-// export function resetLocalDB() {
-//   db = null
-// }
-
-
-
-// db/couch.js
-
 import PouchDB from "pouchdb/dist/pouchdb";
+import PouchDBFind from "pouchdb-find";
+
+PouchDB.plugin(PouchDBFind);
 
 let databases = {};
+let initializedIndexes = new Set();
+
+async function ensureIndexes(db, userId) {
+  if (initializedIndexes.has(userId)) return;
+
+  initializedIndexes.add(userId);
+
+  try {
+    await db.createIndex({
+      index: {
+        fields: ["type"],
+        name: "idx_type",
+      },
+    });
+
+    await db.createIndex({
+      index: {
+        fields: ["type", "workspace_id"],
+        name: "idx_type_workspace",
+      },
+    });
+
+    await db.createIndex({
+      index: {
+        fields: ["type", "user_id"],
+        name: "idx_type_user",
+      },
+    });
+  } catch (err) {
+    console.warn("PouchDB index creation failed:", err);
+  }
+}
 
 export function getDB(userId) {
-
   if (!userId) {
-    throw new Error(
-      "Function requires a valid userId."
-    );
+    throw new Error("Function requires a valid userId.");
   }
 
   if (!databases[userId]) {
-
-    databases[userId] =
-      new PouchDB(`ts_local_${userId}`);
+    databases[userId] = new PouchDB(`ts_local_${userId}`);
+    ensureIndexes(databases[userId], userId);
   }
 
   return databases[userId];
 }
 
-export function resetLocalDB(userId) {
+export async function getDocsByType(db, type) {
+  try {
+    const result = await db.find({
+      selector: { type },
+      use_index: "idx_type",
+    });
 
+    return result.docs || [];
+  } catch (err) {
+    console.warn(`Indexed query failed for type ${type}; falling back to allDocs`, err);
+
+    const result = await db.allDocs({ include_docs: true });
+    return result.rows
+      .map((row) => row.doc)
+      .filter((doc) => doc?.type === type);
+  }
+}
+
+export async function getDocsByTypes(db, types = []) {
+  if (!types.length) return [];
+
+  try {
+    const result = await db.find({
+      selector: {
+        type: { $in: types },
+      },
+      use_index: "idx_type",
+    });
+
+    return result.docs || [];
+  } catch (err) {
+    console.warn("Indexed multi-type query failed; falling back to allDocs", err);
+
+    const typeSet = new Set(types);
+    const result = await db.allDocs({ include_docs: true });
+    return result.rows
+      .map((row) => row.doc)
+      .filter((doc) => doc?.type && typeSet.has(doc.type));
+  }
+}
+
+export function resetLocalDB(userId) {
   if (!userId) return;
 
   if (databases[userId]) {
-
     databases[userId].close();
-
     delete databases[userId];
+    initializedIndexes.delete(userId);
   }
 }
