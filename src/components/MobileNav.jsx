@@ -1,4 +1,4 @@
-import { Menu, CheckSquare } from "lucide-react";
+import { Menu } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import tf_logo from "@/assets/tf-logo.png";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,7 @@ export default function MobileNav({ onMenuClick }) {
         </div>
 
       </div>
-      <NotificationBell position="right" />
+      <NotificationBell />
     </div>
   );
 }
