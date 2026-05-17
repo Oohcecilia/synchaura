@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppData } from "@/lib/DataProvider";
-import { useAuth } from "@/lib/AuthContext";
 import { cn } from "@/lib/utils";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
 import TaskDetailDialog from "../components/TaskDetailDialog";
@@ -18,13 +17,86 @@ import {
   isSameMonth,
   isSameDay,
   isToday,
+  differenceInCalendarDays,
+  differenceInCalendarWeeks,
+  differenceInCalendarMonths,
+  differenceInCalendarYears,
 } from "date-fns";
 import TaskFormDialog from "../components/TaskFormDialog";
 
-export default function CalendarPage() {
-  const { user } = useAuth();
+const getTaskStartDate = (task) => {
+  const value = task.due_date || task.next_due_date || task.start_date || task.created_at;
+  if (!value) return null;
 
-  // ✅ ALL DATA COMES FROM CENTRAL PROVIDER
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toNumberArray = (value) => Array.isArray(value) ? value.map(Number).filter(Number.isFinite) : [];
+
+const intervalCount = (task) => Math.max(1, Number(task.recurring_interval_count) || 1);
+
+const isRecurringTaskOnDate = (task, date) => {
+  if (task.status !== "recurring") return false;
+
+  const startDate = getTaskStartDate(task);
+  if (!startDate) return false;
+
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const recurrenceStart = new Date(
+    startDate.getFullYear(),
+    startDate.getMonth(),
+    startDate.getDate()
+  );
+
+  if (dayStart < recurrenceStart) return false;
+
+  const count = intervalCount(task);
+  const interval = task.recurring_interval || "weekly";
+  const daysOfWeek = toNumberArray(task.recurring_days_of_week);
+  const daysOfMonth = toNumberArray(task.recurring_days_of_month);
+
+  if (interval === "daily") {
+    return differenceInCalendarDays(dayStart, recurrenceStart) % count === 0;
+  }
+
+  if (interval === "weekly") {
+    const weekMatches = differenceInCalendarWeeks(dayStart, recurrenceStart, { weekStartsOn: 1 }) % count === 0;
+    const selectedDays = daysOfWeek.length ? daysOfWeek : [recurrenceStart.getDay()];
+
+    return weekMatches && selectedDays.includes(dayStart.getDay());
+  }
+
+  if (interval === "monthly") {
+    const monthMatches = differenceInCalendarMonths(dayStart, recurrenceStart) % count === 0;
+    const selectedDates = daysOfMonth.length ? daysOfMonth : [recurrenceStart.getDate()];
+
+    return monthMatches && selectedDates.includes(dayStart.getDate());
+  }
+
+  if (interval === "yearly") {
+    const yearMatches = differenceInCalendarYears(dayStart, recurrenceStart) % count === 0;
+    const selectedMonths = daysOfWeek.length ? daysOfWeek : [recurrenceStart.getMonth() + 1];
+    const selectedDates = daysOfMonth.length ? daysOfMonth : [recurrenceStart.getDate()];
+
+    return (
+      yearMatches &&
+      selectedMonths.includes(dayStart.getMonth() + 1) &&
+      selectedDates.includes(dayStart.getDate())
+    );
+  }
+
+  return false;
+};
+
+const createOccurrence = (task, date) => ({
+  ...task,
+  occurrence_date: date.toISOString(),
+  occurrence_key: `${task._id}_${format(date, "yyyy-MM-dd")}`,
+  is_recurring_occurrence: task.status === "recurring",
+});
+
+export default function CalendarPage() {
   const {
     tasks,
     teams,
@@ -40,27 +112,14 @@ export default function CalendarPage() {
   const [editTask, setEditTask] = useState(null);
   const [detailTask, setDetailTask] = useState(null);
 
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem("theme");
-    return saved ? saved === "dark" : false;
-  });
-
-  // theme
   useEffect(() => {
     const theme = getSavedTheme();
-    setDarkMode(applyTheme(theme));
+    applyTheme(theme);
   }, []);
 
-  // -----------------------------
-  // CALENDAR DAYS
-  // -----------------------------
   const days = useMemo(() => {
-    const start = startOfWeek(startOfMonth(currentMonth), {
-      weekStartsOn: 1,
-    });
-    const end = endOfWeek(endOfMonth(currentMonth), {
-      weekStartsOn: 1,
-    });
+    const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 });
+    const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 });
 
     const result = [];
     let day = start;
@@ -73,17 +132,32 @@ export default function CalendarPage() {
     return result;
   }, [currentMonth]);
 
-  // -----------------------------
-  // TASK HELPERS
-  // -----------------------------
-  const getTasksForDate = (date) =>
-    tasks.filter(
-      (t) => t.due_date && isSameDay(new Date(t.due_date), date)
-    );
+  const getTasksForDate = (date) => {
+    return (tasks ?? [])
+      .flatMap((task) => {
+        if (task.status === "recurring") {
+          return isRecurringTaskOnDate(task, date)
+            ? [createOccurrence(task, date)]
+            : [];
+        }
 
-  const selectedTasks = selectedDate
-    ? getTasksForDate(selectedDate)
-    : [];
+        if (!task.due_date) return [];
+
+        const due = new Date(task.due_date);
+        if (Number.isNaN(due.getTime())) return [];
+
+        return isSameDay(due, date)
+          ? [createOccurrence(task, date)]
+          : [];
+      })
+      .sort((a, b) => {
+        const aTime = a.start_date || a.due_date || "";
+        const bTime = b.start_date || b.due_date || "";
+        return String(aTime).localeCompare(String(bTime));
+      });
+  };
+
+  const selectedTasks = selectedDate ? getTasksForDate(selectedDate) : [];
 
   const priorityDot = {
     high: "bg-red-500",
@@ -91,9 +165,6 @@ export default function CalendarPage() {
     low: "bg-emerald-500",
   };
 
-  // -----------------------------
-  // LOADING
-  // -----------------------------
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -102,12 +173,8 @@ export default function CalendarPage() {
     );
   }
 
-  // -----------------------------
-  // UI
-  // -----------------------------
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
           Calendar
@@ -117,10 +184,7 @@ export default function CalendarPage() {
         </p>
       </div>
 
-      {/* CALENDAR */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-
-        {/* HEADER */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <Button
             variant="ghost"
@@ -143,7 +207,6 @@ export default function CalendarPage() {
           </Button>
         </div>
 
-        {/* DAYS HEADER */}
         <div className="grid grid-cols-7 border-b border-border">
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
             <div
@@ -155,12 +218,10 @@ export default function CalendarPage() {
           ))}
         </div>
 
-        {/* GRID */}
         <div className="grid grid-cols-7">
           {days.map((day, idx) => {
             const dayTasks = getTasksForDate(day);
-            const isSelected =
-              selectedDate && isSameDay(day, selectedDate);
+            const isSelected = selectedDate && isSameDay(day, selectedDate);
 
             return (
               <button
@@ -183,14 +244,15 @@ export default function CalendarPage() {
                 </span>
 
                 <div className="flex flex-wrap gap-0.5 mt-0.5">
-                  {dayTasks.slice(0, 3).map((t) => (
+                  {dayTasks.slice(0, 3).map((task) => (
                     <div
-                      key={t._id}
+                      key={task.occurrence_key}
                       className={cn(
                         "h-1.5 w-1.5 rounded-full",
-                        priorityDot[t.priority] || "bg-primary"
+                        priorityDot[task.priority] || "bg-primary",
+                        task.is_recurring_occurrence && "ring-1 ring-primary ring-offset-1 ring-offset-background"
                       )}
-                      title={t.title}
+                      title={task.title}
                     />
                   ))}
 
@@ -206,7 +268,6 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* SELECTED TASKS */}
       {selectedDate && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold">
@@ -221,7 +282,7 @@ export default function CalendarPage() {
             <div className="space-y-2">
               {selectedTasks.map((task) => (
                 <div
-                  key={task._id}
+                  key={task.occurrence_key}
                   onClick={() => setDetailTask(task)}
                   className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-3"
                 >
@@ -233,13 +294,21 @@ export default function CalendarPage() {
                   />
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
+                    <p className="text-sm font-medium truncate flex items-center gap-1">
                       {task.title}
+                      {task.is_recurring_occurrence && (
+                        <RefreshCw className="h-3 w-3 text-primary shrink-0" />
+                      )}
                     </p>
+                    {task.is_recurring_occurrence && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Recurs on {format(new Date(task.occurrence_date), "MMM d, yyyy")}
+                      </p>
+                    )}
                   </div>
 
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                    {task.status}
+                    {task.is_recurring_occurrence ? "recurring" : task.status}
                   </span>
                 </div>
               ))}
@@ -248,15 +317,14 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* DIALOGS */}
       <TaskDetailDialog
         open={!!detailTask}
         onOpenChange={(v) => !v && setDetailTask(null)}
         task={detailTask}
         members={members}
-        onEdit={(t) => {
+        onEdit={(task) => {
           setDetailTask(null);
-          setEditTask(t);
+          setEditTask(task);
           setShowForm(true);
         }}
       />
