@@ -20,56 +20,77 @@ export function DataProvider({ children }) {
   const [hasTeams, setHasTeam] = useState(false);
   const [data, setData] = useState(EMPTY_DATA);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const applyData = useCallback((res) => {
+    const nextData = {
+      tasks: res?.tasks ?? [],
+      teams: res?.teams ?? [],
+      members: res?.members ?? [],
+      workspaces: res?.workspaces ?? [],
+      timelogs: res?.timelogs ?? [],
+      userList: res?.userList ?? [],
+    };
+
+    setData(nextData);
+    setHasMembers(nextData.members.length > 0);
+    setHasTeam(nextData.teams.length > 0);
+  }, []);
+
+  const refreshUserAccess = useCallback(async () => {
     if (!session?.userId) return;
 
     try {
-      setLoading(true);
-
-      const res = await fetchedUserData(session);
-      const nextData = {
-        tasks: res?.tasks ?? [],
-        teams: res?.teams ?? [],
-        members: res?.members ?? [],
-        workspaces: res?.workspaces ?? [],
-        timelogs: res?.timelogs ?? [],
-        userList: res?.userList ?? [],
-      };
-
-      setData(nextData);
-      setHasMembers(nextData.members.length > 0);
-      setHasTeam(nextData.teams.length > 0);
-
       const userAccess = await getUserAccessMap(session.userId);
       setUser((prev) => ({
         ...(prev || {}),
         ...(userAccess.user || {}),
         id: session.userId,
         _id: session.userId,
-        memberships: userAccess.memberships ?? [],
-        access_rights: userAccess.memberships ?? [],
+        memberships: userAccess.memberships ?? prev?.memberships ?? [],
+        access_rights: userAccess.memberships ?? prev?.access_rights ?? [],
       }));
     } catch (err) {
-      console.error("DataProvider loadData error:", err);
-      setData(EMPTY_DATA);
-      setHasMembers(false);
-      setHasTeam(false);
-    } finally {
-      setLoading(false);
+      console.warn("Background user access refresh failed:", err);
     }
   }, [session?.userId, setUser]);
 
+  const loadData = useCallback(async ({ background = false } = {}) => {
+    if (!session?.userId) return;
+
+    try {
+      if (background) setRefreshing(true);
+      else setLoading(true);
+
+      const res = await fetchedUserData(session);
+      applyData(res);
+
+      // Access refresh is useful, but should not delay local data rendering.
+      refreshUserAccess();
+    } catch (err) {
+      console.warn("DataProvider loadData error:", err);
+      if (!background) {
+        applyData(EMPTY_DATA);
+      }
+    } finally {
+      if (background) setRefreshing(false);
+      else setLoading(false);
+    }
+  }, [session, applyData, refreshUserAccess]);
+
   useEffect(() => {
-    if (!isAuthenticated) return;
-    loadData();
-  }, [isAuthenticated, loadData]);
+    if (!isAuthenticated || !session?.userId) return;
+
+    // Local-first load. This reads local PouchDB data and should finish quickly;
+    // it does not wait for remote sync or auth verification.
+    loadData({ background: false });
+  }, [isAuthenticated, session?.userId, loadData]);
 
   usePouchChanges(session?.userId, (doc) => {
     if (!session?.userId || !doc) return;
 
     if (!["task", "team"].includes(doc.type)) {
-      loadData();
+      loadData({ background: true });
       return;
     }
 
@@ -109,8 +130,9 @@ export function DataProvider({ children }) {
     <DataContext.Provider
       value={{
         ...safeData,
-        reload: loadData,
+        reload: () => loadData({ background: true }),
         loading,
+        refreshing,
       }}
     >
       {children}
