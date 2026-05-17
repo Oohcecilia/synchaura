@@ -15,6 +15,12 @@ function emptyState() {
   };
 }
 
+const getUserId = (user) => {
+  if (!user) return null;
+  if (typeof user === "string") return user;
+  return user.userId || user.id || user._id || user.user?.id || user.user?._id || null;
+};
+
 export async function fetchedUserData(user) {
 
   if (!user?.userId) return emptyState();
@@ -145,83 +151,60 @@ export async function fetchedUserData(user) {
 
 
 export async function getNotifications(user) {
-  const db = getDB(user?.id);
-  const userId = String(user?._id);
+  const userId = getUserId(user);
 
+  if (!userId) return { notifications: [], unreadCount: 0 };
+
+  const db = getDB(userId);
   if (!db) return { notifications: [], unreadCount: 0 };
 
   try {
     const result = await db.allDocs({ include_docs: true });
-      
+
     const allDocs = result.rows
       .map((row) => row.doc)
       .filter(Boolean);
-      
 
-    // Workspaces where user has access
     const workspaceIds = allDocs
       .filter((doc) => {
-        if (doc?.type !== "membership") {
-          return false;
-        }
+        if (doc?.type !== "membership") return false;
 
-        const isOwner =
-          String(doc.user_id) === userId;
-
+        const isMember = String(doc.user_id) === String(userId);
         const isIncluded =
           Array.isArray(doc.user_ids) &&
-          doc.user_ids.some(
-            (id) => String(id) === userId
-          );
+          doc.user_ids.some((id) => String(id) === String(userId));
 
-        return isOwner || isIncluded;
+        return isMember || isIncluded;
       })
-      .map((m) => String(m.workspace_id));
+      .map((membership) => String(membership.workspace_id));
 
-    // Notifications
     const notifications = allDocs
       .filter((notif) => {
-        if (notif?.type !== "notification") {
-          return false;
-        }
+        if (notif?.type !== "notification") return false;
 
-        // Personal notification
-        if (
-          String(notif.user_id) === userId
-        ) {
-          return true;
-        }
+        const notifUserId = notif.user_id ? String(notif.user_id) : null;
+        const notifWorkspaceId = notif.workspace_id || notif.org_id;
 
-        // Public info notifications
-        if (notif.category === "info") {
-          return true;
-        }
+        if (notifUserId === String(userId)) return true;
+        if (notif.category === "info") return true;
 
-        // Workspace access
-        return workspaceIds.includes(
-          String(notif.workspace_id)
-        );
+        return notifWorkspaceId
+          ? workspaceIds.includes(String(notifWorkspaceId))
+          : false;
       })
       .sort(
         (a, b) =>
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
       );
 
-    // Unread count
-    const unreadCount = notifications.filter((n) => {
-      const readList = Array.isArray(n.read)
-        ? n.read
+    const unreadCount = notifications.filter((notification) => {
+      const readList = Array.isArray(notification.read)
+        ? notification.read
         : [];
 
-      return !readList.some(
-        (id) => String(id) === userId
-      );
+      return !readList.some((id) => String(id) === String(userId));
     }).length;
-
-    console.log("NOTIF:", notifications);
-
-
 
     return {
       notifications,
@@ -357,82 +340,3 @@ export async function getUserAccessMap(userId) {
     return { user: null, memberships: [] };
   }
 }
-
-
-export async function getDocument(type, id) {
-  if (!type || !id) return null;
-
-  const db = getDB(id);
-  if (!db) return null;
-
-  try {
-    const result = await db.allDocs({ include_docs: true });
-
-    const docs = result.rows
-      .map((r) => r.doc)
-      .filter(Boolean);
-
-    return docs.find(
-      (doc) => doc.type === type && doc._id === id
-    ) || null;
-
-  } catch (error) {
-    console.error(`[getDocument] ${type}/${id}`, error);
-    return null;
-  }
-}
-
-
-
-
-export async function hasTaskAccess(user, task) {
-  if (!user || !task) return false;
-
-  const wsId = String(task.workspace_id);
-
-  const membership = await getDocument("membership", wsId);
-
-  const hasAccess =
-    membership?.user_id === user?._id ||
-    membership?.user_ids?.includes(user?._id);
-
-
-  if (!hasAccess) return false;
-
-  return true;
-}
-
-
-
-// export async function appPrivilage(userId) {
-//   if (!userId) return { user: null, memberships: [] };
-
-//   const db = getDB(userId);
-//   if (!db) return { user: null, memberships: [] };
-
-//   try {
-//     const result = await db.allDocs({ include_docs: true });
-//     const docs = result.rows.map((r) => r.doc).filter(Boolean);
-
-//     const accountType = docs
-//     .filter(
-//       (doc) =>
-//         doc?.type === "workspace" &&
-//         String(doc.owner_id) === String(userId)
-//     )
-
-//     const memberships = docs
-//       .filter(
-//         (doc) =>
-//           doc?.type === "membership" &&
-//           String(doc.user_id) === String(userId)
-//       )
-//       .map((m) => ({
-//         workspace_id: m.workspace_id,
-//         role: m.role || "member",
-//         team_ids: Array.isArray(m.team_ids) ? m.team_ids : [],
-//       }));
-//   };
-
-  
-// }
