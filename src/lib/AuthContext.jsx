@@ -26,7 +26,7 @@ const getMemberships = (value) => {
 };
 
 const normalizeUser = (value, fallback = {}) => {
-  if (!value) return null;
+  if (!value) return fallback.userId ? { id: fallback.userId, _id: fallback.userId, memberships: [] } : null;
 
   const baseUser = value.user && typeof value.user === "object" ? value.user : value;
   const id = getUserId(baseUser) || getUserId(value) || fallback.userId || null;
@@ -41,6 +41,11 @@ const normalizeUser = (value, fallback = {}) => {
   };
 };
 
+const isInvalidSessionError = (err) => {
+  const message = String(err?.message || "").toLowerCase();
+  return message.includes("invalid session") || message.includes("unauthorized") || message.includes("401");
+};
+
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -50,13 +55,14 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  const saveSession = useCallback((data) => {
-    if (!data) return;
+  const saveSession = useCallback((data, userSnapshot = null) => {
+    if (!data?.userId || !data?.token) return;
 
     const safeSession = {
       userId: data.userId,
       token: data.token,
       workspaceId: data.workspaceId,
+      user: userSnapshot ? normalizeUser(userSnapshot, data) : data.user || null,
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(safeSession));
@@ -90,16 +96,23 @@ export const AuthProvider = ({ children }) => {
         },
       });
 
-      if (!res?.success || !res?.user) return false;
+      if (!res?.success || !res?.user) {
+        return { valid: false, invalid: true };
+      }
 
-      setUser(normalizeUser(res.user, sessionData));
-      return true;
+      const verifiedUser = normalizeUser(res.user, sessionData);
+      setUser(verifiedUser);
+      saveSession(sessionData, verifiedUser);
+
+      return { valid: true, invalid: false, user: verifiedUser };
     } catch (err) {
-      return false;
+      return { valid: false, invalid: isInvalidSessionError(err), error: err };
     }
-  }, []);
+  }, [saveSession]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const init = async () => {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
@@ -121,25 +134,23 @@ export const AuthProvider = ({ children }) => {
           return;
         }
 
+        const hydratedUser = normalizeUser(parsed.user, parsed);
+
         setSession(parsed);
+        setUser(hydratedUser);
+        setIsAuthenticated(true);
 
-        if (!navigator.onLine) {
-          setIsAuthenticated(true);
-          setUser(normalizeUser(parsed.user, parsed));
-          return;
-        }
+        if (!navigator.onLine) return;
 
-        const valid = await verifySession(parsed);
+        const result = await verifySession(parsed);
+        if (cancelled) return;
 
-        if (!valid) {
+        if (result.invalid) {
           setSession(null);
           setUser(null);
           setIsAuthenticated(false);
           localStorage.removeItem(STORAGE_KEY);
-          return;
         }
-
-        setIsAuthenticated(true);
       } catch (err) {
         console.error("Auth init error:", err);
         setSession(null);
@@ -147,11 +158,15 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(false);
         localStorage.removeItem(STORAGE_KEY);
       } finally {
-        setIsLoadingAuth(false);
+        if (!cancelled) setIsLoadingAuth(false);
       }
     };
 
     init();
+
+    return () => {
+      cancelled = true;
+    };
   }, [verifySession]);
 
   useEffect(() => {
@@ -160,9 +175,9 @@ export const AuthProvider = ({ children }) => {
       if (!stored) return;
 
       const parsed = JSON.parse(stored);
-      const valid = await verifySession(parsed);
+      const result = await verifySession(parsed);
 
-      if (!valid) {
+      if (result.invalid) {
         await logout();
       } else {
         setIsAuthenticated(true);
@@ -188,19 +203,28 @@ export const AuthProvider = ({ children }) => {
         throw new Error(data?.error || "Invalid credentials");
       }
 
+      const userSession = data.user_session || data.user;
+      const userId = getUserId(userSession) || data.user_id;
+
+      if (!userId || !data.token) {
+        throw new Error("Login response was missing session data");
+      }
+
       const sessionData = {
-        userId: data.user_session?.id,
+        userId,
         token: data.token,
-        workspaceId: data.workspace || data.db,
+        workspaceId: data.workspace || data.workspace_id || data.db,
       };
 
-      saveSession(sessionData);
-      setUser(normalizeUser(data.user_session, sessionData));
+      const normalizedUser = normalizeUser(userSession, sessionData);
+
+      saveSession(sessionData, normalizedUser);
+      setUser(normalizedUser);
       setIsAuthenticated(true);
 
       return sessionData;
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(err.message || "Login failed");
       throw err;
     } finally {
       setIsLoadingAuth(false);
@@ -236,13 +260,15 @@ export const AuthProvider = ({ children }) => {
           : [],
       };
 
-      saveSession(sessionData);
-      setUser(normalizeUser(data.user || fallbackUser, sessionData));
+      const normalizedUser = normalizeUser(data.user || fallbackUser, sessionData);
+
+      saveSession(sessionData, normalizedUser);
+      setUser(normalizedUser);
       setIsAuthenticated(true);
 
       return data;
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(err.message || "Registration failed");
       throw err;
     } finally {
       setIsLoadingAuth(false);
