@@ -11,10 +11,35 @@ import { apiRequest } from "@/api/client";
 import { resetLocalDB } from "@/db/couch";
 
 const AuthContext = createContext();
-
-// -------------------------
-
 const STORAGE_KEY = "session";
+
+const getUserId = (value) =>
+  value?.userId || value?.id || value?._id || value?.user?.id || value?.user?._id || null;
+
+const getMemberships = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value.memberships)) return value.memberships;
+  if (Array.isArray(value.access_rights)) return value.access_rights;
+  if (Array.isArray(value.user?.memberships)) return value.user.memberships;
+  if (Array.isArray(value.user?.access_rights)) return value.user.access_rights;
+  return [];
+};
+
+const normalizeUser = (value, fallback = {}) => {
+  if (!value) return null;
+
+  const baseUser = value.user && typeof value.user === "object" ? value.user : value;
+  const id = getUserId(baseUser) || getUserId(value) || fallback.userId || null;
+  const memberships = getMemberships(value);
+
+  return {
+    ...baseUser,
+    id,
+    _id: baseUser._id || id,
+    memberships,
+    access_rights: baseUser.access_rights || memberships,
+  };
+};
 
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
@@ -25,9 +50,6 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  // =========================
-  // SAVE SESSION
-  // =========================
   const saveSession = useCallback((data) => {
     if (!data) return;
 
@@ -41,120 +63,103 @@ export const AuthProvider = ({ children }) => {
     setSession(safeSession);
   }, []);
 
-  // =========================
-  // LOGOUT
-  // =========================
   const logout = useCallback(async () => {
+    const userId = session?.userId;
+
     setSession(null);
     setUser(null);
     setActiveWorkspace(null);
     setIsAuthenticated(false);
-
     localStorage.removeItem(STORAGE_KEY);
 
     try {
-      await resetLocalDB();
+      await resetLocalDB(userId);
     } catch (e) {
       console.warn("DB reset failed", e);
     }
-  }, []);
+  }, [session?.userId]);
 
-  // =========================
-  // VERIFY SESSION (backend truth check)
-  // =========================
   const verifySession = useCallback(async (sessionData) => {
     try {
-
       const res = await apiRequest("/auth/verify-session", {
         method: "POST",
+        requireAuth: false,
         body: {
           userId: sessionData.userId,
           token: sessionData.token,
         },
       });
 
-      if (!res?.success || !res?.user) {
-        return false;
-      }
+      if (!res?.success || !res?.user) return false;
 
-      setUser(res.user);
+      setUser(normalizeUser(res.user, sessionData));
       return true;
     } catch (err) {
       return false;
     }
   }, []);
 
-  // =========================
-  // INIT SESSION (boot + offline-first)
-  // =========================
-useEffect(() => {
-  const init = async () => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
 
-      if (!stored) {
-        setSession(null);
-        setUser(null);
-        setIsAuthenticated(false);
-        return;
-      }
+        if (!stored) {
+          setSession(null);
+          setUser(null);
+          setIsAuthenticated(false);
+          return;
+        }
 
-      const parsed = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
 
-      if (!parsed?.token || !parsed?.userId) {
-        setSession(null);
-        setUser(null);
-        setIsAuthenticated(false);
-        localStorage.removeItem(STORAGE_KEY);
-        return;
-      }
+        if (!parsed?.token || !parsed?.userId) {
+          setSession(null);
+          setUser(null);
+          setIsAuthenticated(false);
+          localStorage.removeItem(STORAGE_KEY);
+          return;
+        }
 
-      setSession(parsed);
+        setSession(parsed);
 
-      // 📴 OFFLINE
-      if (!navigator.onLine) {
+        if (!navigator.onLine) {
+          setIsAuthenticated(true);
+          setUser(normalizeUser(parsed.user, parsed));
+          return;
+        }
+
+        const valid = await verifySession(parsed);
+
+        if (!valid) {
+          setSession(null);
+          setUser(null);
+          setIsAuthenticated(false);
+          localStorage.removeItem(STORAGE_KEY);
+          return;
+        }
+
         setIsAuthenticated(true);
-        setUser(parsed.user || null);
-        return;
-      }
-
-      // 🌐 ONLINE VERIFY
-      const valid = await verifySession(parsed);
-
-      if (!valid) {
+      } catch (err) {
+        console.error("Auth init error:", err);
         setSession(null);
         setUser(null);
         setIsAuthenticated(false);
         localStorage.removeItem(STORAGE_KEY);
-        return;
+      } finally {
+        setIsLoadingAuth(false);
       }
+    };
 
-      setIsAuthenticated(true);
+    init();
+  }, [verifySession]);
 
-    } catch (err) {
-      console.error("Auth init error:", err);
-      setSession(null);
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setIsLoadingAuth(false); // ✅ single source of truth
-    }
-  };
-
-  init();
-}, [verifySession]);
-
-  // =========================
-  // AUTO REVALIDATION (when internet comes back)
-  // =========================
   useEffect(() => {
     const handleOnline = async () => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (!stored) return;
 
       const parsed = JSON.parse(stored);
-
       const valid = await verifySession(parsed);
 
       if (!valid) {
@@ -165,15 +170,9 @@ useEffect(() => {
     };
 
     window.addEventListener("online", handleOnline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-    };
+    return () => window.removeEventListener("online", handleOnline);
   }, [verifySession, logout]);
 
-  // =========================
-  // LOGIN
-  // =========================
   const login = useCallback(async ({ phone, pin }) => {
     try {
       setIsLoadingAuth(true);
@@ -181,6 +180,7 @@ useEffect(() => {
 
       const data = await apiRequest("/login", {
         method: "POST",
+        requireAuth: false,
         body: { username: phone, password: pin },
       });
 
@@ -189,13 +189,13 @@ useEffect(() => {
       }
 
       const sessionData = {
-        userId: data.user_session.id,
+        userId: data.user_session?.id,
         token: data.token,
-        workspaceId: data.db,
+        workspaceId: data.workspace || data.db,
       };
 
       saveSession(sessionData);
-      setUser(data.user_session);
+      setUser(normalizeUser(data.user_session, sessionData));
       setIsAuthenticated(true);
 
       return sessionData;
@@ -207,9 +207,6 @@ useEffect(() => {
     }
   }, [saveSession]);
 
-  // =========================
-  // REGISTER
-  // =========================
   const register = useCallback(async (formData) => {
     try {
       setIsLoadingAuth(true);
@@ -217,6 +214,7 @@ useEffect(() => {
 
       const data = await apiRequest("/register", {
         method: "POST",
+        requireAuth: false,
         body: formData,
       });
 
@@ -227,24 +225,40 @@ useEffect(() => {
       const sessionData = {
         userId: data.user_id,
         token: data.token,
-        workspaceId: data.db,
+        workspaceId: data.workspace_id || data.db,
+      };
+
+      const fallbackUser = {
+        id: data.user_id,
+        _id: data.user_id,
+        memberships: data.workspace_id
+          ? [{ workspace_id: data.workspace_id, role: "owner", team_ids: [] }]
+          : [],
       };
 
       saveSession(sessionData);
-      setUser(data.user);
+      setUser(normalizeUser(data.user || fallbackUser, sessionData));
       setIsAuthenticated(true);
 
       return data;
     } catch (err) {
+      setAuthError(err.message);
       throw err;
     } finally {
       setIsLoadingAuth(false);
     }
   }, [saveSession]);
 
-  // =========================
-  // CONTEXT VALUE
-  // =========================
+  const memberships = useMemo(() => getMemberships(user), [user]);
+  const hasFullAccess = useMemo(
+    () => memberships.some((m) => m.role === "owner" || m.role === "admin"),
+    [memberships]
+  );
+  const hasOwnerAccess = useMemo(
+    () => memberships.some((m) => m.role === "owner"),
+    [memberships]
+  );
+
   const value = useMemo(() => ({
     session,
     user,
@@ -253,6 +267,8 @@ useEffect(() => {
     isAuthenticated,
     isLoadingAuth,
     authError,
+    hasFullAccess,
+    hasOwnerAccess,
 
     login,
     register,
@@ -266,6 +282,8 @@ useEffect(() => {
     isAuthenticated,
     isLoadingAuth,
     authError,
+    hasFullAccess,
+    hasOwnerAccess,
     login,
     register,
     logout,
@@ -278,7 +296,6 @@ useEffect(() => {
   );
 };
 
-// -------------------------
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
