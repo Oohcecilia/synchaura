@@ -5,46 +5,76 @@ import SyncIndicator from "@/components/SyncIndicator";
 import { getDB } from "@/db/couch";
 import { isInitialized, markInitialized } from "@/db/meta";
 
+const SYNC_TIMEOUT_MS = 30000;
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Initial sync timed out")), ms);
+    }),
+  ]);
+}
+
 export default function SyncProvider({ children }) {
   const { isAuthenticated, session } = useAuth();
-
   const [status, setStatus] = useState("idle");
-
-  // 👇 IMPORTANT: null = "checking", false = no UI, true = show UI
   const [showSync, setShowSync] = useState(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !session?.userId) return;
+    if (!isAuthenticated || !session?.userId) {
+      setShowSync(false);
+      return;
+    }
 
     let alive = true;
 
     async function init() {
-      const db = getDB(session.userId);
+      let db;
 
-      // STEP 1: check DB first (NO UI)
-      const exists = await isInitialized(db);
+      try {
+        db = getDB(session.userId);
+        const exists = await isInitialized(db);
 
-      if (!alive) return;
+        if (!alive) return;
 
-      // STEP 2: if already initialized → NO UI AT ALL
-      if (exists) {
-        setShowSync(false);
-        return;
+        if (exists) {
+          setShowSync(false);
+          await startSync({
+            id: session.userId,
+            onStatus: setStatus,
+          });
+          return;
+        }
+
+        setShowSync(true);
+        setStatus("initializing");
+
+        await withTimeout(
+          startSync({
+            id: session.userId,
+            onStatus: setStatus,
+          }),
+          SYNC_TIMEOUT_MS
+        );
+
+        await markInitialized(db);
+      } catch (err) {
+        console.error("Initial sync failed:", err);
+        setStatus("error");
+
+        // Do not block the whole app forever. The live sync layer retries in
+        // the background, and users can still use the local database offline.
+        if (db) {
+          try {
+            await markInitialized(db);
+          } catch (markErr) {
+            console.error("Failed to mark DB initialized after sync error:", markErr);
+          }
+        }
+      } finally {
+        if (alive) setShowSync(false);
       }
-
-      // STEP 3: first time → show sync UI
-      setShowSync(true);
-
-      await startSync({
-        id: session.userId,
-        onStatus: setStatus,
-      });
-
-      await markInitialized(db);
-
-      if (!alive) return;
-
-      setShowSync(false);
     }
 
     init();
@@ -55,7 +85,6 @@ export default function SyncProvider({ children }) {
     };
   }, [isAuthenticated, session?.userId]);
 
-  // 🚨 KEY: don't render anything until decision is made
   if (showSync === null) return children;
 
   return (
