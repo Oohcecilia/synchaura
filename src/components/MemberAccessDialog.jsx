@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -12,69 +12,66 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Users, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getDB } from "@/db/couch";
-
-
-const ROLES = ["member"];
-
 import { useAuth } from "@/lib/AuthContext";
+
+const ROLES = ["member", "admin"];
+
+const getAccessList = (member) => {
+  if (Array.isArray(member?.memberships)) return member.memberships;
+  if (Array.isArray(member?.access_rights)) return member.access_rights;
+  return [];
+};
+
+const getAccessWorkspaceId = (access) => access.workspace_id || access.org_id;
+const getAccessTeamIds = (access) => access.team_ids || access.team_id || [];
 
 export default function MemberAccessDialog({
   open,
   onOpenChange,
   member,
   teams = [],
-  workspace = [],
+  workspaces = [],
 }) {
-  const { user, setUser } = useAuth();
+  const { session, user, setUser } = useAuth();
 
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedRole, setSelectedRole] = useState("member");
-  const [selectedOrg, setSelectedOrg] = useState("");
+  const [selectedWorkspace, setSelectedWorkspace] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // =========================
-  // INIT ORG
-  // =========================
   useEffect(() => {
     if (!member || !open) return;
 
-    const defaultOrg =
-      member.access_rights?.[0]?.org_id ||
-      workspace?.[0]?._id ||
+    const firstAccess = getAccessList(member)[0];
+    const defaultWorkspace =
+      getAccessWorkspaceId(firstAccess || {}) ||
+      workspaces?.[0]?._id ||
       "";
 
-    setSelectedOrg(defaultOrg);
-  }, [member, open, workspace]);
+    setSelectedWorkspace(defaultWorkspace);
+  }, [member, open, workspaces]);
 
-  // =========================
-  // SYNC ROLE + TEAMS WHEN ORG CHANGES
-  // =========================
   useEffect(() => {
-    if (!member || !selectedOrg) return;
+    if (!member || !selectedWorkspace) return;
 
-    const current = member.access_rights?.find(
-      (a) => a.org_id === selectedOrg
+    const current = getAccessList(member).find(
+      (access) => getAccessWorkspaceId(access) === selectedWorkspace
     );
 
     if (current) {
       setSelectedRole(current.role || "member");
-      setSelectedTeams(current.team_id || []);
+      setSelectedTeams(getAccessTeamIds(current));
     } else {
       setSelectedRole("member");
       setSelectedTeams([]);
     }
-  }, [selectedOrg, member]);
+  }, [selectedWorkspace, member]);
 
-  // =========================
-  // FILTER TEAMS
-  // =========================
-  const filteredTeams = teams.filter(
-    (t) => t.org_id === selectedOrg
+  const filteredTeams = useMemo(
+    () => teams.filter((team) => team.workspace_id === selectedWorkspace || team.org_id === selectedWorkspace),
+    [teams, selectedWorkspace]
   );
 
-  // =========================
-  // TOGGLE TEAM
-  // =========================
   const toggleTeam = (id) => {
     setSelectedTeams((prev) =>
       prev.includes(id)
@@ -83,72 +80,55 @@ export default function MemberAccessDialog({
     );
   };
 
-  // =========================
-  // SAVE
-  // =========================
-const handleSave = async () => {
-    if (!selectedOrg) return;
+  const handleSave = async () => {
+    if (!selectedWorkspace || !session?.userId || !member?._id) return;
 
     setSaving(true);
 
     try {
-      // 1. Get the PouchDB instance
-      const db = getDB(user?.id);
-      if (!db) return;
-
-      // 2. Fetch the member doc from PouchDB to get latest _rev
+      const db = getDB(session.userId);
       const dbUser = await db.get(member._id);
-      if (!dbUser) throw new Error("User document not found in local DB");
 
-      // 3. Logic to update or add access rights
-      const access = Array.isArray(dbUser.access_rights)
-        ? dbUser.access_rights
-        : [];
+      const access = getAccessList(dbUser);
+      const exists = access.some(
+        (entry) => getAccessWorkspaceId(entry) === selectedWorkspace
+      );
 
-      const exists = access.some(a => a.org_id === selectedOrg);
+      const nextEntry = {
+        workspace_id: selectedWorkspace,
+        role: selectedRole,
+        team_ids: selectedTeams ?? [],
+      };
 
       const updatedAccess = exists
-        ? access.map(a =>
-          a.org_id === selectedOrg
-            ? {
-              ...a,
-              role: selectedRole,
-              team_id: selectedTeams ?? [],
-            }
-            : a
-        )
-        : [
-          ...access,
-          {
-            org_id: selectedOrg,
-            role: selectedRole,
-            team_id: selectedTeams ?? [],
-          },
-        ];
+        ? access.map((entry) =>
+            getAccessWorkspaceId(entry) === selectedWorkspace
+              ? { ...entry, ...nextEntry, org_id: undefined, team_id: undefined }
+              : entry
+          )
+        : [...access, nextEntry];
 
-      // 4. Construct the updated document
       const updatedUserDoc = {
-        ...dbUser, // Preserves _id, _rev, and other fields like phone/email
+        ...dbUser,
         access_rights: updatedAccess,
+        memberships: updatedAccess,
         updated_at: new Date().toISOString(),
       };
 
-      // 5. Save to PouchDB
       await db.put(updatedUserDoc);
 
-      // 6. Update local state if the user edited themselves
-      // if (member._id === user?._id) {
-      //   setUser?.(updatedUserDoc);
-      //   // Sync with session so page refreshes don't lose the new role
-      //   sessionStorage.setItem("user", JSON.stringify(updatedUserDoc));
-      // }
+      if (member._id === user?._id || member._id === user?.id) {
+        setUser?.({
+          ...updatedUserDoc,
+          id: updatedUserDoc._id,
+          memberships: updatedAccess,
+        });
+      }
 
-      // 7. Notify components to refresh UI
       window.dispatchEvent(new Event("user:updated"));
       onOpenChange(false);
-
     } catch (err) {
-      console.error("❌ Save access rights error:", err);
+      console.error("Save access rights error:", err);
     } finally {
       setSaving(false);
     }
@@ -157,70 +137,44 @@ const handleSave = async () => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
-
         <DialogHeader>
           <DialogTitle className="text-center">
-            Manage Access — {member.first_name || member.email}
+            Manage Access — {member.first_name || member.email || member.phone}
           </DialogTitle>
-            <DialogDescription>
-              View and update user roles, access rights, and organization permissions.
-            </DialogDescription>
+          <DialogDescription>
+            View and update user roles, access rights, and workspace permissions.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="teams" className="flex-1 flex flex-col overflow-hidden">
-          {/* ORGANIZATION SELECT */}
           <select
-            value={selectedOrg}
-            onChange={(e) => setSelectedOrg(e.target.value)}
-            className="
-                      w-full p-2 rounded-lg text-sm 
-                      bg-white dark:bg-[hsl(var(--background))] 
-                      text-[hsl(var(--foreground))]
-                      border border-[hsl(var(--border))]
-                    "
+            value={selectedWorkspace}
+            onChange={(e) => setSelectedWorkspace(e.target.value)}
+            className="w-full p-2 rounded-lg text-sm bg-white dark:bg-[hsl(var(--background))] text-[hsl(var(--foreground))] border border-[hsl(var(--border))]"
           >
             <option value="" className="bg-[hsl(var(--background))]">
-              Select organization
+              Select workspace
             </option>
-            {workspace.map((org) => (
+            {workspaces.map((workspace) => (
               <option
-                key={org._id}
-                value={org._id}
+                key={workspace._id}
+                value={workspace._id}
                 className="bg-[hsl(var(--background))] text-[hsl(var(--foreground))]"
               >
-                {org.name}
+                {workspace.name}
               </option>
             ))}
           </select>
 
           <div className="my-5 h-px w-full bg-[hsl(var(--border))]" />
 
-          {/* ================= TABS ================= */}
-          <Label
-            className="
-              block mb-2
-              text-xs font-medium
-              text-[hsl(var(--muted-foreground))]
-            "
-          >
+          <Label className="block mb-2 text-xs font-medium text-[hsl(var(--muted-foreground))]">
             Team / Role
           </Label>
-          <TabsList
-            className="
-                        w-full rounded-xl p-1
-                        bg-[hsl(var(--muted))]
-                        border border-[hsl(var(--border))]
-                      "
-          >
+          <TabsList className="w-full rounded-xl p-1 bg-[hsl(var(--muted))] border border-[hsl(var(--border))]">
             <TabsTrigger
               value="teams"
-              className="
-                          flex-1 text-xs
-                          text-[hsl(var(--muted-foreground))]
-                          data-[state=active]:bg-[hsl(var(--background))]
-                          data-[state=active]:text-[hsl(var(--foreground))]
-                          data-[state=active]:shadow-sm
-                        "
+              className="flex-1 text-xs text-[hsl(var(--muted-foreground))] data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--foreground))] data-[state=active]:shadow-sm"
             >
               <Users className="h-3.5 w-3.5 mr-1.5" />
               Teams
@@ -228,25 +182,17 @@ const handleSave = async () => {
 
             <TabsTrigger
               value="role"
-              className="
-                          flex-1 text-xs
-                          text-[hsl(var(--muted-foreground))]
-                          data-[state=active]:bg-[hsl(var(--background))]
-                          data-[state=active]:text-[hsl(var(--foreground))]
-                          data-[state=active]:shadow-sm
-                        "
+              className="flex-1 text-xs text-[hsl(var(--muted-foreground))] data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--foreground))] data-[state=active]:shadow-sm"
             >
               <Shield className="h-3.5 w-3.5 mr-1.5" />
               Role
             </TabsTrigger>
           </TabsList>
 
-          {/* ================= TEAMS ================= */}
           <TabsContent value="teams" className="flex-1 overflow-y-auto mt-3 space-y-2">
-
             {filteredTeams.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-6">
-                No teams in this organization
+                No teams in this workspace
               </p>
             )}
 
@@ -275,19 +221,15 @@ const handleSave = async () => {
                   )}
                 </div>
 
-                <span className="font-medium truncate">
-                  {team.name}
-                </span>
+                <span className="font-medium truncate">{team.name}</span>
               </button>
             ))}
           </TabsContent>
 
-          {/* ================= ROLE ================= */}
           <TabsContent value="role" className="flex-1 overflow-y-auto mt-3 space-y-2">
-
-            {!selectedOrg && (
+            {!selectedWorkspace && (
               <p className="text-xs text-muted-foreground text-center py-6">
-                Choose organization first
+                Choose workspace first
               </p>
             )}
 
@@ -310,14 +252,10 @@ const handleSave = async () => {
                 )}
               </button>
             ))}
-
           </TabsContent>
-
         </Tabs>
 
-        {/* ================= FOOTER ================= */}
         <div className="flex gap-2 pt-3 border-t mt-3">
-
           <Button
             variant="outline"
             className="flex-1"
@@ -329,14 +267,12 @@ const handleSave = async () => {
           <Button
             className="flex-1"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !selectedWorkspace}
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Save Access
           </Button>
-
         </div>
-
       </DialogContent>
     </Dialog>
   );
