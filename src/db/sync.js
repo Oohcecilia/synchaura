@@ -7,9 +7,7 @@ import {
   markDBInitialized,
 } from "./meta";
 
-const VITE_POUCHDB_ROOT_URL = import.meta.env.VITE_POUCHDB_ROOT_URL;
-const VITE_AUTH_STRING = import.meta.env.VITE_AUTH_STRING;
-const VITE_DB_NAME = import.meta.env.VITE_DB_NAME;
+const API_URL = import.meta.env.VITE_API_URL;
 
 let syncHandler = null;
 
@@ -20,19 +18,9 @@ export async function startSync({ id, onStatus, onProgress }) {
     return syncHandler;
   }
 
-  const remoteDB = new PouchDB(
-    `${VITE_POUCHDB_ROOT_URL}/${VITE_DB_NAME}`,
-    {
-      skip_setup: true,
-      fetch: (url, opts) => {
-        opts.headers.set(
-          "Authorization",
-          `Basic ${btoa(VITE_AUTH_STRING)}`
-        );
-        return PouchDB.fetch(url, opts);
-      },
-    }
-  );
+  const remoteDB = new PouchDB(`${API_URL}/couch`, {
+    skip_setup: true,
+  });
 
   const initialized = await isDBInitialized(localDB, id);
 
