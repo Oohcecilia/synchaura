@@ -43,6 +43,8 @@ export function getDB(userId) {
   }
 
   if (!databases[userId]) {
+    // Stable per-user/device DB name. PouchDB persists this IndexedDB database
+    // across reloads and app sessions until explicitly destroyed.
     databases[userId] = new PouchDB(`ts_local_${userId}`);
     ensureIndexes(databases[userId], userId);
   }
@@ -91,12 +93,26 @@ export async function getDocsByTypes(db, types = []) {
   }
 }
 
-export function resetLocalDB(userId) {
+export async function closeLocalDB(userId) {
+  if (!userId || !databases[userId]) return;
+
+  await databases[userId].close();
+  delete databases[userId];
+  initializedIndexes.delete(userId);
+}
+
+export async function destroyLocalDB(userId) {
   if (!userId) return;
 
-  if (databases[userId]) {
-    databases[userId].close();
-    delete databases[userId];
-    initializedIndexes.delete(userId);
-  }
+  const db = getDB(userId);
+  await db.destroy();
+  delete databases[userId];
+  initializedIndexes.delete(userId);
+}
+
+// Backward-compatible alias. This now only closes the in-memory handle and
+// preserves the user's persistent IndexedDB cache. Use destroyLocalDB only for
+// explicit account-data wipe flows.
+export function resetLocalDB(userId) {
+  return closeLocalDB(userId);
 }
