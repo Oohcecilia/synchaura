@@ -186,10 +186,7 @@ export const AuthProvider = ({ children }) => {
       const data = await apiRequest("/login", {
         method: "POST",
         requireAuth: false,
-        // Login can be slow when a legacy plaintext PIN is migrated to bcrypt.
-        // Do not abort it too aggressively or both correct and incorrect
-        // credentials can look like a frontend timeout.
-        timeoutMs: 30000,
+        timeoutMs: 0,
         body: { username: phone, password: pin },
       });
 
@@ -216,8 +213,6 @@ export const AuthProvider = ({ children }) => {
       setUser(normalizedUser);
       setIsAuthenticated(true);
 
-      // Deliberately do not immediately verify here. The login response is the
-      // successful auth boundary; verification runs on reload/online events.
       return sessionData;
     } catch (err) {
       setAuthError(err.message || "Login failed");
@@ -232,7 +227,7 @@ export const AuthProvider = ({ children }) => {
       const data = await apiRequest("/register", {
         method: "POST",
         requireAuth: false,
-        timeoutMs: 30000,
+        timeoutMs: 0,
         body: formData,
       });
 
