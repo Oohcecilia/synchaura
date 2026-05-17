@@ -8,7 +8,7 @@ import React, {
 } from "react";
 
 import { apiRequest } from "@/api/client";
-import { resetLocalDB } from "@/db/couch";
+import { closeLocalDB } from "@/db/couch";
 
 const AuthContext = createContext();
 const STORAGE_KEY = "session";
@@ -102,9 +102,9 @@ export const AuthProvider = ({ children }) => {
     clearSession();
 
     try {
-      await resetLocalDB(userId);
+      await closeLocalDB(userId);
     } catch (e) {
-      console.warn("DB reset failed", e);
+      console.warn("DB close failed", e);
     }
   }, [clearSession, session?.userId]);
 
@@ -119,7 +119,7 @@ export const AuthProvider = ({ children }) => {
       const res = await apiRequest("/auth/verify-session", {
         method: "POST",
         requireAuth: false,
-        timeoutMs: 4000,
+        timeoutMs: 5000,
         body: {
           userId: sessionData.userId,
           token: sessionData.token,
@@ -164,7 +164,6 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(true);
     setIsLoadingAuth(false);
 
-    // Background only. Do not block routing or local data hydration.
     verifySession(stored, { clearOnInvalid: true });
   }, [verifySession]);
 
@@ -187,7 +186,10 @@ export const AuthProvider = ({ children }) => {
       const data = await apiRequest("/login", {
         method: "POST",
         requireAuth: false,
-        timeoutMs: 8000,
+        // Login can be slow when a legacy plaintext PIN is migrated to bcrypt.
+        // Do not abort it too aggressively or both correct and incorrect
+        // credentials can look like a frontend timeout.
+        timeoutMs: 30000,
         body: { username: phone, password: pin },
       });
 
@@ -214,15 +216,14 @@ export const AuthProvider = ({ children }) => {
       setUser(normalizedUser);
       setIsAuthenticated(true);
 
-      // Refresh richer user details in the background, but do not block redirect.
-      verifySession(sessionData, { clearOnInvalid: false });
-
+      // Deliberately do not immediately verify here. The login response is the
+      // successful auth boundary; verification runs on reload/online events.
       return sessionData;
     } catch (err) {
       setAuthError(err.message || "Login failed");
       throw err;
     }
-  }, [saveSession, verifySession]);
+  }, [saveSession]);
 
   const register = useCallback(async (formData) => {
     try {
@@ -231,7 +232,7 @@ export const AuthProvider = ({ children }) => {
       const data = await apiRequest("/register", {
         method: "POST",
         requireAuth: false,
-        timeoutMs: 10000,
+        timeoutMs: 30000,
         body: formData,
       });
 
@@ -258,14 +259,13 @@ export const AuthProvider = ({ children }) => {
       saveSession(sessionData, normalizedUser);
       setUser(normalizedUser);
       setIsAuthenticated(true);
-      verifySession(sessionData, { clearOnInvalid: false });
 
       return data;
     } catch (err) {
       setAuthError(err.message || "Registration failed");
       throw err;
     }
-  }, [saveSession, verifySession]);
+  }, [saveSession]);
 
   const memberships = useMemo(() => getMemberships(user), [user]);
   const hasFullAccess = useMemo(
