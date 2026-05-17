@@ -3,146 +3,97 @@ import usePouchChanges from "@/hooks/usePouchChanges";
 import { useAuth } from "@/lib/AuthContext";
 import { getUserAccessMap, fetchedUserData } from "@/db/api";
 
-
 const DataContext = createContext();
+
+const EMPTY_DATA = {
+  tasks: [],
+  teams: [],
+  members: [],
+  workspaces: [],
+  timelogs: [],
+  userList: [],
+};
 
 export function DataProvider({ children }) {
   const { isAuthenticated, session, setUser } = useAuth();
   const [hasMembers, setHasMembers] = useState(false);
   const [hasTeams, setHasTeam] = useState(false);
-
-  // =========================
-  // SAFE INITIAL STATE
-  // =========================
-  const [data, setData] = useState({
-    tasks: [],
-    teams: [],
-    members: [],
-    workspaces: [],
-    timelogs: [],
-    userList: [],
-  });
-
+  const [data, setData] = useState(EMPTY_DATA);
   const [loading, setLoading] = useState(false);
 
-  // =========================
-  // SAFE LOADER
-  // =========================
   const loadData = useCallback(async () => {
-    if (!session) return;
+    if (!session?.userId) return;
 
     try {
       setLoading(true);
 
       const res = await fetchedUserData(session);
-
-      // 🔥 CRITICAL: sanitize everything
-      setData({
+      const nextData = {
         tasks: res?.tasks ?? [],
         teams: res?.teams ?? [],
         members: res?.members ?? [],
         workspaces: res?.workspaces ?? [],
         timelogs: res?.timelogs ?? [],
         userList: res?.userList ?? [],
-      });
+      };
 
-      if (res?.members > 0) setHasMembers(true);
-      if (res?.teams > 0) setHasTeam(true);
-
+      setData(nextData);
+      setHasMembers(nextData.members.length > 0);
+      setHasTeam(nextData.teams.length > 0);
 
       const userAccess = await getUserAccessMap(session.userId);
-
-      setUser(userAccess);
-
+      setUser((prev) => ({
+        ...(prev || {}),
+        ...(userAccess.user || {}),
+        id: session.userId,
+        _id: session.userId,
+        memberships: userAccess.memberships ?? [],
+        access_rights: userAccess.memberships ?? [],
+      }));
     } catch (err) {
       console.error("DataProvider loadData error:", err);
-
-      // fallback safe state (NEVER leave undefined)
-      setData({
-        tasks: [],
-        teams: [],
-        members: [],
-        workspaces: [],
-        timelogs: [],
-        userList: [],
-      });
-
+      setData(EMPTY_DATA);
+      setHasMembers(false);
+      setHasTeam(false);
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [session?.userId, setUser]);
 
-  // =========================
-  // INITIAL LOAD (SAFE)
-  // =========================
   useEffect(() => {
     if (!isAuthenticated) return;
-
     loadData();
-
-  }, [session, loadData]);
-
-  // =========================
-  // REALTIME POUCHDB CHANGES
-  // (debounced to avoid reload spam)
-  // =========================
-
+  }, [isAuthenticated, loadData]);
 
   usePouchChanges(session?.userId, (doc) => {
     if (!session?.userId || !doc) return;
 
+    if (!["task", "team"].includes(doc.type)) {
+      loadData();
+      return;
+    }
+
     setData((prev) => {
       const next = { ...prev };
+      const collection = doc.type === "task" ? "tasks" : "teams";
 
-      // ======================
-      // TASKS
-      // ======================
-      if (doc.type === "task") {
-        if (doc._deleted) {
-          next.tasks = prev.tasks.filter(
-            (t) => t._id !== doc._id
-          );
-        } else {
-          const exists = prev.tasks.some(
-            (t) => t._id === doc._id
-          );
-
-          next.tasks = exists
-            ? prev.tasks.map((t) =>
-              t._id === doc._id ? doc : t
-            )
-            : [doc, ...prev.tasks];
-        }
+      if (doc._deleted) {
+        next[collection] = prev[collection].filter((item) => item._id !== doc._id);
+      } else {
+        const exists = prev[collection].some((item) => item._id === doc._id);
+        next[collection] = exists
+          ? prev[collection].map((item) => (item._id === doc._id ? doc : item))
+          : [doc, ...prev[collection]];
       }
 
-      // ======================
-      // TEAMS
-      // ======================
-      if (doc.type === "team") {
-        if (doc._deleted) {
-          next.teams = prev.teams.filter(
-            (t) => t._id !== doc._id
-          );
-        } else {
-          const exists = prev.teams.some(
-            (t) => t._id === doc._id
-          );
-
-          next.teams = exists
-            ? prev.teams.map((t) =>
-              t._id === doc._id ? doc : t
-            )
-            : [doc, ...prev.teams];
-        }
+      if (collection === "teams") {
+        setHasTeam(next.teams.length > 0);
       }
 
       return next;
     });
   });
 
-  // =========================
-  // SAFE CONTEXT VALUE
-  // =========================
   const safeData = {
     tasks: data.tasks ?? [],
     teams: data.teams ?? [],
@@ -151,7 +102,7 @@ export function DataProvider({ children }) {
     timelogs: data.timelogs ?? [],
     userList: data.userList ?? [],
     hasMembers,
-    hasTeams
+    hasTeams,
   };
 
   return (
