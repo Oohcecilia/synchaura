@@ -10,10 +10,12 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function SyncIndicator({
   visible,
   status,
+  progress = 0,
 }) {
   if (!visible) return null;
 
   const isDone = status === "ready";
+  const safeProgress = Math.max(0, Math.min(100, Math.round(progress || 0)));
 
   const getTitle = () => {
     switch (status) {
@@ -21,10 +23,10 @@ export default function SyncIndicator({
         return "Setting up your workspace";
 
       case "syncing":
-        return "Keeping your data up to date";
+        return "Syncing your offline data";
 
       case "error":
-        return "Something went wrong";
+        return "Sync is taking longer than expected";
 
       case "ready":
         return "All set!";
@@ -37,19 +39,34 @@ export default function SyncIndicator({
   const getDescription = () => {
     switch (status) {
       case "initializing":
-        return "We’re preparing your offline workspace...";
+        return "Creating your local database and preparing offline access...";
 
       case "syncing":
-        return "Syncing your latest updates...";
+        return "Downloading your workspace data for offline use...";
 
       case "error":
-        return "Please check your connection and try again.";
+        return "You can continue using the app. Sync will retry in the background.";
 
       case "ready":
         return "You're ready to go offline.";
 
       default:
         return "Please wait a moment...";
+    }
+  };
+
+  const getFooter = () => {
+    switch (status) {
+      case "initializing":
+        return "Preparing offline workspace...";
+      case "syncing":
+        return "Syncing changes...";
+      case "ready":
+        return "Everything is up to date";
+      case "error":
+        return "Sync did not finish, but the app remains available";
+      default:
+        return "Starting...";
     }
   };
 
@@ -72,7 +89,6 @@ export default function SyncIndicator({
           }}
           className="w-full max-w-sm mx-4 bg-card border border-border rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-6"
         >
-          {/* ICON */}
           <div className="relative">
             <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
               <Database className="h-8 w-8 text-primary" />
@@ -101,7 +117,6 @@ export default function SyncIndicator({
             )}
           </div>
 
-          {/* TEXT */}
           <div className="text-center space-y-1">
             <h2 className="text-lg font-semibold tracking-tight">
               {getTitle()}
@@ -112,34 +127,19 @@ export default function SyncIndicator({
             </p>
           </div>
 
-          {/* PROGRESS (INDICATOR ONLY - NO %) */}
           <div className="w-full space-y-2">
-            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden relative">
-              <motion.div
-                className="h-full bg-primary rounded-full absolute"
-                initial={{ x: "-100%" }}
-                animate={{ x: "100%" }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 1.2,
-                  ease: "linear",
-                }}
-                style={{ width: "40%" }}
-              />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{getFooter()}</span>
+              <span>{safeProgress}%</span>
             </div>
 
-            <div className="text-xs text-center text-muted-foreground">
-              {status === "initializing" &&
-                "Preparing offline workspace..."}
-
-              {status === "syncing" &&
-                "Syncing changes..."}
-
-              {status === "ready" &&
-                "Everything is up to date"}
-
-              {status === "error" &&
-                "Sync failed"}
+            <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-primary rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${safeProgress}%` }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+              />
             </div>
           </div>
         </motion.div>
