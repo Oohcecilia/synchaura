@@ -13,6 +13,19 @@ import { resetLocalDB } from "@/db/couch";
 const AuthContext = createContext();
 const STORAGE_KEY = "session";
 
+const readStoredSession = () => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+
+    const parsed = JSON.parse(stored);
+    return parsed?.token && parsed?.userId ? parsed : null;
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
+};
+
 const getUserId = (value) =>
   value?.userId || value?.id || value?._id || value?.user?.id || value?.user?._id || null;
 
@@ -26,7 +39,9 @@ const getMemberships = (value) => {
 };
 
 const normalizeUser = (value, fallback = {}) => {
-  if (!value) return fallback.userId ? { id: fallback.userId, _id: fallback.userId, memberships: [] } : null;
+  if (!value) {
+    return fallback.userId ? { id: fallback.userId, _id: fallback.userId, memberships: [] } : null;
+  }
 
   const baseUser = value.user && typeof value.user === "object" ? value.user : value;
   const id = getUserId(baseUser) || getUserId(value) || fallback.userId || null;
@@ -42,17 +57,22 @@ const normalizeUser = (value, fallback = {}) => {
 };
 
 const isInvalidSessionError = (err) => {
+  const status = Number(err?.status);
   const message = String(err?.message || "").toLowerCase();
-  return message.includes("invalid session") || message.includes("unauthorized") || message.includes("401");
+  return status === 401 || message.includes("invalid session") || message.includes("unauthorized");
 };
 
+const initialSession = readStoredSession();
+const initialUser = initialSession ? normalizeUser(initialSession.user, initialSession) : null;
+
 export const AuthProvider = ({ children }) => {
-  const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(initialSession);
+  const [user, setUser] = useState(initialUser);
   const [activeWorkspace, setActiveWorkspace] = useState(null);
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(initialSession));
+  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+  const [isVerifyingSession, setIsVerifyingSession] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   const saveSession = useCallback((data, userSnapshot = null) => {
@@ -69,27 +89,37 @@ export const AuthProvider = ({ children }) => {
     setSession(safeSession);
   }, []);
 
-  const logout = useCallback(async () => {
-    const userId = session?.userId;
-
+  const clearSession = useCallback(() => {
     setSession(null);
     setUser(null);
     setActiveWorkspace(null);
     setIsAuthenticated(false);
     localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  const logout = useCallback(async () => {
+    const userId = session?.userId;
+    clearSession();
 
     try {
       await resetLocalDB(userId);
     } catch (e) {
       console.warn("DB reset failed", e);
     }
-  }, [session?.userId]);
+  }, [clearSession, session?.userId]);
 
-  const verifySession = useCallback(async (sessionData) => {
+  const verifySession = useCallback(async (sessionData, { clearOnInvalid = true } = {}) => {
+    if (!sessionData?.userId || !sessionData?.token || !navigator.onLine) {
+      return { valid: false, invalid: false, skipped: true };
+    }
+
     try {
+      setIsVerifyingSession(true);
+
       const res = await apiRequest("/auth/verify-session", {
         method: "POST",
         requireAuth: false,
+        timeoutMs: 4000,
         body: {
           userId: sessionData.userId,
           token: sessionData.token,
@@ -97,105 +127,67 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (!res?.success || !res?.user) {
+        if (clearOnInvalid) clearSession();
         return { valid: false, invalid: true };
       }
 
       const verifiedUser = normalizeUser(res.user, sessionData);
       setUser(verifiedUser);
       saveSession(sessionData, verifiedUser);
+      setIsAuthenticated(true);
 
       return { valid: true, invalid: false, user: verifiedUser };
     } catch (err) {
-      return { valid: false, invalid: isInvalidSessionError(err), error: err };
+      if (isInvalidSessionError(err)) {
+        if (clearOnInvalid) clearSession();
+        return { valid: false, invalid: true, error: err };
+      }
+
+      console.warn("Background session verification failed:", err);
+      return { valid: false, invalid: false, error: err };
+    } finally {
+      setIsVerifyingSession(false);
     }
-  }, [saveSession]);
+  }, [clearSession, saveSession]);
 
   useEffect(() => {
-    let cancelled = false;
+    const stored = readStoredSession();
 
-    const init = async () => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      setIsLoadingAuth(false);
+      return;
+    }
 
-        if (!stored) {
-          setSession(null);
-          setUser(null);
-          setIsAuthenticated(false);
-          return;
-        }
+    const hydratedUser = normalizeUser(stored.user, stored);
+    setSession(stored);
+    setUser(hydratedUser);
+    setIsAuthenticated(true);
+    setIsLoadingAuth(false);
 
-        const parsed = JSON.parse(stored);
-
-        if (!parsed?.token || !parsed?.userId) {
-          setSession(null);
-          setUser(null);
-          setIsAuthenticated(false);
-          localStorage.removeItem(STORAGE_KEY);
-          return;
-        }
-
-        const hydratedUser = normalizeUser(parsed.user, parsed);
-
-        setSession(parsed);
-        setUser(hydratedUser);
-        setIsAuthenticated(true);
-
-        if (!navigator.onLine) return;
-
-        const result = await verifySession(parsed);
-        if (cancelled) return;
-
-        if (result.invalid) {
-          setSession(null);
-          setUser(null);
-          setIsAuthenticated(false);
-          localStorage.removeItem(STORAGE_KEY);
-        }
-      } catch (err) {
-        console.error("Auth init error:", err);
-        setSession(null);
-        setUser(null);
-        setIsAuthenticated(false);
-        localStorage.removeItem(STORAGE_KEY);
-      } finally {
-        if (!cancelled) setIsLoadingAuth(false);
-      }
-    };
-
-    init();
-
-    return () => {
-      cancelled = true;
-    };
+    // Background only. Do not block routing or local data hydration.
+    verifySession(stored, { clearOnInvalid: true });
   }, [verifySession]);
 
   useEffect(() => {
-    const handleOnline = async () => {
-      const stored = localStorage.getItem(STORAGE_KEY);
+    const handleOnline = () => {
+      const stored = readStoredSession();
       if (!stored) return;
-
-      const parsed = JSON.parse(stored);
-      const result = await verifySession(parsed);
-
-      if (result.invalid) {
-        await logout();
-      } else {
-        setIsAuthenticated(true);
-      }
+      verifySession(stored, { clearOnInvalid: true });
     };
 
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
-  }, [verifySession, logout]);
+  }, [verifySession]);
 
   const login = useCallback(async ({ phone, pin }) => {
     try {
-      setIsLoadingAuth(true);
+      setIsLoadingAuth(false);
       setAuthError(null);
 
       const data = await apiRequest("/login", {
         method: "POST",
         requireAuth: false,
+        timeoutMs: 8000,
         body: { username: phone, password: pin },
       });
 
@@ -222,23 +214,24 @@ export const AuthProvider = ({ children }) => {
       setUser(normalizedUser);
       setIsAuthenticated(true);
 
+      // Refresh richer user details in the background, but do not block redirect.
+      verifySession(sessionData, { clearOnInvalid: false });
+
       return sessionData;
     } catch (err) {
       setAuthError(err.message || "Login failed");
       throw err;
-    } finally {
-      setIsLoadingAuth(false);
     }
-  }, [saveSession]);
+  }, [saveSession, verifySession]);
 
   const register = useCallback(async (formData) => {
     try {
-      setIsLoadingAuth(true);
       setAuthError(null);
 
       const data = await apiRequest("/register", {
         method: "POST",
         requireAuth: false,
+        timeoutMs: 10000,
         body: formData,
       });
 
@@ -265,15 +258,14 @@ export const AuthProvider = ({ children }) => {
       saveSession(sessionData, normalizedUser);
       setUser(normalizedUser);
       setIsAuthenticated(true);
+      verifySession(sessionData, { clearOnInvalid: false });
 
       return data;
     } catch (err) {
       setAuthError(err.message || "Registration failed");
       throw err;
-    } finally {
-      setIsLoadingAuth(false);
     }
-  }, [saveSession]);
+  }, [saveSession, verifySession]);
 
   const memberships = useMemo(() => getMemberships(user), [user]);
   const hasFullAccess = useMemo(
@@ -292,6 +284,7 @@ export const AuthProvider = ({ children }) => {
 
     isAuthenticated,
     isLoadingAuth,
+    isVerifyingSession,
     authError,
     hasFullAccess,
     hasOwnerAccess,
@@ -307,6 +300,7 @@ export const AuthProvider = ({ children }) => {
     activeWorkspace,
     isAuthenticated,
     isLoadingAuth,
+    isVerifyingSession,
     authError,
     hasFullAccess,
     hasOwnerAccess,
