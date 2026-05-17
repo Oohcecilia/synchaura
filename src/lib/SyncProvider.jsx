@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { runInitialSync, startSync, stopSync } from "@/db/sync";
 import SyncIndicator from "@/components/SyncIndicator";
 import { getDB } from "@/db/couch";
-import { isInitialized } from "@/db/meta";
+import { isInitialized, hasUsableLocalData } from "@/db/meta";
 
 export default function SyncProvider({ children }) {
   const { isAuthenticated, session } = useAuth();
@@ -23,11 +23,13 @@ export default function SyncProvider({ children }) {
     async function initSync() {
       try {
         const db = getDB(session.userId);
-        const exists = await isInitialized(db);
+        const initialized = await isInitialized(db);
+        const hasLocalData = initialized || await hasUsableLocalData(db);
+        const shouldShowInitialSync = !hasLocalData;
 
         if (!alive) return;
 
-        if (!exists) {
+        if (shouldShowInitialSync) {
           setShowSync(true);
           setStatus("initializing");
           setProgress(5);
@@ -57,10 +59,12 @@ export default function SyncProvider({ children }) {
             }
           }
         } else {
+          // Existing local DB: render local data immediately and sync silently.
           setShowSync(false);
+          setProgress(0);
+          setStatus("idle");
         }
 
-        // Live sync is always background. It should never block local rendering.
         await startSync({
           id: session.userId,
           onStatus: (nextStatus) => {
