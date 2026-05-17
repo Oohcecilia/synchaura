@@ -1,30 +1,26 @@
-import requests
-from nanoid import generate
-from datetime import datetime
-from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel
-from utils.auth import create_access_token
-from pydantic import BaseModel
-from fastapi import status
 import os
+from datetime import datetime
 
+import requests
+from fastapi import APIRouter, HTTPException
+from nanoid import generate
+from passlib.context import CryptContext
+from pydantic import BaseModel
+
+from utils.auth import create_access_token
 
 router = APIRouter()
 
-# 1. AUTH & SERVER CONFIG
-# Use the root URL here to avoid double-pathing bugs
 COUCH_SERVER = os.getenv("COUCH_SERVER")
 DB_NAME = os.getenv("DB_NAME")
 ADMIN_AUTH = (os.getenv("COUCH_USER"), os.getenv("COUCH_PASS"))
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# -------------------------
-# MODELS
-# -------------------------
+
 class LoginRequest(BaseModel):
-    username: str # This is the phone number
-    password: str # This is the pin
-
+    username: str  # phone number
+    password: str  # PIN
 
 
 class RegisterRequest(BaseModel):
@@ -37,64 +33,113 @@ class RegisterRequest(BaseModel):
     workspaceDesc: str | None = None
 
 
-
 class VerifySessionBody(BaseModel):
     userId: str
     token: str
 
-# -------------------------
-# HELPERS
-# -------------------------
 
 def gen_id(prefix):
-    return f"{prefix}_{generate(size=12)}"  # short + unique
+    return f"{prefix}_{generate(size=12)}"
 
 
-# -------------------------
-# ROUTES
-# -------------------------
+def hash_pin(pin: str) -> str:
+    return pwd_context.hash(pin)
 
-@router.post("/login")
-def login(data: LoginRequest):
-    # 1. Search for a document that matches Type, Phone, and Pin
+
+def verify_pin(pin: str, pin_hash: str) -> bool:
+    try:
+        return pwd_context.verify(pin, pin_hash)
+    except Exception:
+        return False
+
+
+def sanitize_user(user_doc: dict) -> dict:
+    user = dict(user_doc)
+    user.pop("pin", None)
+    user.pop("pin_hash", None)
+    user.pop("password", None)
+    user.pop("token", None)
+    return user
+
+
+def find_user_by_phone(phone: str):
     search_query = {
         "selector": {
             "type": "user",
-            "phone": data.username,
-            "pin": data.password
+            "phone": phone,
         },
-        "limit": 1
+        "limit": 1,
     }
 
     res = requests.post(
         f"{COUCH_SERVER}/{DB_NAME}/_find",
         json=search_query,
-        auth=ADMIN_AUTH
+        auth=ADMIN_AUTH,
     )
 
     if res.status_code != 200:
-        return {"success": False, "error": "Database connection error"}
+        raise HTTPException(status_code=500, detail="Database connection error")
 
     docs = res.json().get("docs", [])
+    return docs[0] if docs else None
 
-    if not docs:
+
+def save_user_doc(user_doc: dict):
+    res = requests.put(
+        f"{COUCH_SERVER}/{DB_NAME}/{user_doc['_id']}",
+        json=user_doc,
+        auth=ADMIN_AUTH,
+    )
+
+    if res.status_code not in (200, 201, 202):
+        raise HTTPException(status_code=500, detail="Failed to update user")
+
+
+@router.post("/login")
+def login(data: LoginRequest):
+    user_doc = find_user_by_phone(data.username)
+
+    if not user_doc:
         return {"success": False, "error": "Invalid phone number or PIN"}
 
-    # 2. Return the matching user data and token
-    user_doc = docs[0]
+    pin_hash = user_doc.get("pin_hash")
+    legacy_pin = user_doc.get("pin")
+
+    valid = False
+
+    if pin_hash:
+        valid = verify_pin(data.password, pin_hash)
+    elif legacy_pin is not None:
+        valid = str(legacy_pin) == str(data.password)
+
+        # Backward-compatible one-time migration: successful legacy login
+        # replaces plaintext PIN with bcrypt hash.
+        if valid:
+            user_doc["pin_hash"] = hash_pin(data.password)
+            user_doc.pop("pin", None)
+            user_doc["updated_at"] = datetime.utcnow().isoformat()
+            save_user_doc(user_doc)
+
+    if not valid:
+        return {"success": False, "error": "Invalid phone number or PIN"}
+
+    token = user_doc.get("token") or create_access_token({"sub": data.username})
+
+    if user_doc.get("token") != token:
+        user_doc["token"] = token
+        user_doc["updated_at"] = datetime.utcnow().isoformat()
+        save_user_doc(user_doc)
 
     return {
         "success": True,
-        "token": user_doc["token"],
+        "token": token,
         "workspace": DB_NAME,
         "user_session": {
             "id": user_doc["_id"],
-            "name": f"{user_doc['first_name']} {user_doc['last_name']}",
-            "access_rights": user_doc.get("access_rights")
-        }
+            "name": f"{user_doc.get('first_name', '')} {user_doc.get('last_name', '')}".strip(),
+            "access_rights": user_doc.get("access_rights") or user_doc.get("memberships") or [],
+        },
     }
-
-
 
 
 @router.post("/register")
@@ -102,40 +147,16 @@ def register(data: RegisterRequest):
     try:
         now = datetime.utcnow().isoformat()
 
-        # =========================
-        # CHECK EXISTING USER
-        # =========================
-        check_query = {
-            "selector": {"type": "user", "phone": data.phone},
-            "limit": 1
-        }
-
-        check_res = requests.post(
-            f"{COUCH_SERVER}/{DB_NAME}/_find",
-            json=check_query,
-            auth=ADMIN_AUTH
-        )
-
-        if check_res.json().get("docs"):
+        if find_user_by_phone(data.phone):
             return {"success": False, "error": "Phone number already registered"}
 
-        # =========================
-        # IDS
-        # =========================
         user_id = gen_id("user")
         workspace_id = gen_id("ws")
         membership_id = gen_id("mem")
         notif_id = gen_id("notif")
 
-                # TOKEN
-        # =========================
-        token = create_access_token({
-            "sub": data.phone
-        })
+        token = create_access_token({"sub": data.phone})
 
-        # =========================
-        # USER
-        # =========================
         user_doc = {
             "_id": user_id,
             "type": "user",
@@ -143,16 +164,13 @@ def register(data: RegisterRequest):
             "last_name": data.last_name,
             "full_name": f"{data.first_name} {data.last_name}",
             "phone": data.phone,
-            "pin": data.pin,  # ⚠️ consider hashing later
+            "pin_hash": hash_pin(data.pin),
             "email": f"{data.phone}@app.local",
             "token": token,
             "created_at": now,
-            "updated_at": None
+            "updated_at": None,
         }
 
-        # =========================
-        # WORKSPACE
-        # =========================
         if data.accountType == "team":
             workspace_name = data.workspaceName or "Team Workspace"
             workspace_desc = data.workspaceDesc or ""
@@ -167,12 +185,9 @@ def register(data: RegisterRequest):
             "name": workspace_name,
             "description": workspace_desc,
             "owner_id": user_id,
-            "created_at": now
+            "created_at": now,
         }
 
-        # =========================
-        # MEMBERSHIP
-        # =========================
         membership_doc = {
             "_id": membership_id,
             "type": "membership",
@@ -181,38 +196,30 @@ def register(data: RegisterRequest):
             "role": "owner",
             "team_ids": [],
             "user_ids": [],
-            "created_at": now
+            "created_at": now,
         }
 
-        # =========================
-        # NOTIFICATION
-        # =========================
         notification = {
             "_id": notif_id,
-            "type": "info",
+            "type": "notification",
+            "category": "info",
             "title": "Welcome to your workspace",
             "message": f"Welcome {data.first_name} {data.last_name}! Your workspace is set up and ready to go!",
             "user_id": user_id,
             "created_by": "System",
-            "created_at": now
-        }
-
-        # =========================
-        # BULK INSERT
-        # =========================
-        docs = [user_doc, workspace_doc, membership_doc, notification]
-        bulk_payload = {
-            "docs": docs
+            "read": [],
+            "status": "Pending",
+            "created_at": now,
         }
 
         res = requests.post(
             f"{COUCH_SERVER}/{DB_NAME}/_bulk_docs",
-            json=bulk_payload,
-            auth=ADMIN_AUTH
+            json={"docs": [user_doc, workspace_doc, membership_doc, notification]},
+            auth=ADMIN_AUTH,
         )
 
-        results = res.json()
-
+        if res.status_code not in (200, 201, 202):
+            raise HTTPException(status_code=500, detail="Failed to create user")
 
         return {
             "success": True,
@@ -220,21 +227,18 @@ def register(data: RegisterRequest):
             "token": token,
             "user_id": user_id,
             "db": DB_NAME,
-            "workspace_id": workspace_id
+            "workspace_id": workspace_id,
+            "user": sanitize_user(user_doc),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class VerifySessionBody(BaseModel):
-    userId: str
-    token: str
-
-
 @router.post("/auth/verify-session")
 def verify_session(body: VerifySessionBody):
-
     if not body.userId or not body.token:
         raise HTTPException(status_code=401, detail="Invalid session")
 
@@ -242,49 +246,31 @@ def verify_session(body: VerifySessionBody):
         "selector": {
             "type": "user",
             "_id": body.userId,
-            "token": body.token
+            "token": body.token,
         },
-        "limit": 1
+        "limit": 1,
     }
 
-    # 🔥 Make request
     response = requests.post(
         f"{COUCH_SERVER}/{DB_NAME}/_find",
         json=search_query,
-        auth=ADMIN_AUTH
+        auth=ADMIN_AUTH,
     )
 
-    # -------------------------
-    # 1. Check HTTP response
-    # -------------------------
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="DB query failed")
 
-    data = response.json()
-    docs = data.get("docs", [])
+    docs = response.json().get("docs", [])
 
-    # -------------------------
-    # 2. Check if user exists
-    # -------------------------
     if not docs:
         raise HTTPException(status_code=401, detail="Invalid session")
 
     user = docs[0]
 
-    # -------------------------
-    # 3. Extra safety checks
-    # -------------------------
     if user.get("is_deleted") is True:
         raise HTTPException(status_code=401, detail="User deleted")
 
-    # -------------------------
-    # 4. Clean sensitive fields
-    # -------------------------
-    user.pop("password", None)
-    user.pop("token", None)
-
     return {
         "success": True,
-        "user": user
+        "user": sanitize_user(user),
     }
-
