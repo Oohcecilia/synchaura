@@ -97,6 +97,7 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [googleEvents, setGoogleEvents] = useState([]);
+  const [googleEventToEdit, setGoogleEventToEdit] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editTask, setEditTask] = useState(null);
   const [detailTask, setDetailTask] = useState(null);
@@ -179,6 +180,8 @@ export default function CalendarPage() {
         range={googleRange}
         selectedDate={selectedDate}
         onEventsChange={setGoogleEvents}
+        eventToEdit={googleEventToEdit}
+        onEventEditHandled={() => setGoogleEventToEdit(null)}
       />
 
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -259,14 +262,14 @@ export default function CalendarPage() {
                 </div>
               ))}
               {selectedGoogleEvents.map((event) => (
-                <div key={`${event.calendarId}_${event.id}`} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3 min-w-0">
+                <button key={`${event.calendarId}_${event.id}`} type="button" onClick={() => setGoogleEventToEdit(event)} className="w-full text-left bg-card border border-border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-3 min-w-0">
                   <div className="h-2 w-2 rounded-full bg-sky-500 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate flex items-center gap-1">{event.summary || "Untitled event"}<CalendarDays className="h-3 w-3 text-sky-500 shrink-0" /></p>
                     <p className="text-[10px] text-muted-foreground truncate">{event.start?.date ? "All day" : format(new Date(googleEventStart(event)), "h:mm a")}</p>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 shrink-0">Google</span>
-                </div>
+                </button>
               ))}
             </div>
           )}
