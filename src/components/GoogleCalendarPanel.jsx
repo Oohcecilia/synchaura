@@ -35,7 +35,7 @@ const toInputDateTime = (value) => {
   return date.toISOString().slice(0, 16);
 };
 
-export default function GoogleCalendarPanel({ range, onEventsChange, selectedDate }) {
+export default function GoogleCalendarPanel({ range, onEventsChange, selectedDate, eventToEdit, onEventEditHandled }) {
   const [connected, setConnected] = useState(false);
   const [calendars, setCalendars] = useState([]);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState(["primary"]);
@@ -83,12 +83,34 @@ export default function GoogleCalendarPanel({ range, onEventsChange, selectedDat
     }
   }, []);
 
+  const openEdit = useCallback((event) => {
+    if (!event) return;
+    setEditingEvent(event);
+    setForm({
+      calendar_id: event.calendarId || "primary",
+      summary: event.summary || "",
+      description: event.description || "",
+      location: event.location || "",
+      start: toInputDateTime(event.start?.dateTime || event.start?.date),
+      end: toInputDateTime(event.end?.dateTime || event.end?.date),
+      all_day: Boolean(event.start?.date),
+    });
+    setOpenForm(true);
+  }, []);
+
   useEffect(() => {
     loadStatus();
     const params = new URLSearchParams(window.location.search);
     if (params.get("googleCalendar") === "connected") setSuccess("Google Calendar connected successfully.");
     if (params.get("googleCalendar") === "error") setError("Google Calendar connection failed.");
   }, [loadStatus]);
+
+  useEffect(() => {
+    if (eventToEdit) {
+      openEdit(eventToEdit);
+      onEventEditHandled?.();
+    }
+  }, [eventToEdit, onEventEditHandled, openEdit]);
 
   useEffect(() => {
     loadEvents();
@@ -129,20 +151,6 @@ export default function GoogleCalendarPanel({ range, onEventsChange, selectedDat
     end.setHours(10, 0, 0, 0);
     setEditingEvent(null);
     setForm({ ...emptyForm, calendar_id: selectedCalendarIds[0] || "primary", start: toInputDateTime(start), end: toInputDateTime(end) });
-    setOpenForm(true);
-  };
-
-  const openEdit = (event) => {
-    setEditingEvent(event);
-    setForm({
-      calendar_id: event.calendarId || "primary",
-      summary: event.summary || "",
-      description: event.description || "",
-      location: event.location || "",
-      start: toInputDateTime(event.start?.dateTime || event.start?.date),
-      end: toInputDateTime(event.end?.dateTime || event.end?.date),
-      all_day: Boolean(event.start?.date),
-    });
     setOpenForm(true);
   };
 
