@@ -81,7 +81,6 @@ export const AuthProvider = ({ children }) => {
     const safeSession = {
       userId: data.userId,
       token: data.token,
-      workspaceId: data.workspaceId,
       user: userSnapshot ? normalizeUser(userSnapshot, data) : data.user || null,
     };
 

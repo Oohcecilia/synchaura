@@ -139,7 +139,7 @@ export default function MemberAccessDialog({
       <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-center">
-            Manage Access — {member.first_name || member.email || member.phone}
+            Manage Access
           </DialogTitle>
           <DialogDescription>
             View and update user roles, access rights, and workspace permissions.

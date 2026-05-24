@@ -8,7 +8,7 @@ import { getSavedTheme, applyTheme } from "@/utils/theme";
 import { getUser } from "@/db/api";
 
 export default function Settings() {
-  const { user, logout } = useAuth();
+  const { user, session, logout } = useAuth();
   const [pref, setPref] = useState(null);
 
   const [loading] = useState(false);

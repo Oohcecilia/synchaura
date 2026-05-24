@@ -1,4 +1,4 @@
-**Welcome to your TEAMSTAR project** 
+**Welcome to your  project** 
 
 **About**
 

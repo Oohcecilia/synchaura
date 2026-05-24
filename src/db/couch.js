@@ -6,6 +6,37 @@ PouchDB.plugin(PouchDBFind);
 let databases = {};
 let initializedIndexes = new Set();
 
+// async function ensureIndexes(db, userId) {
+//   if (initializedIndexes.has(userId)) return;
+
+//   initializedIndexes.add(userId);
+
+//   try {
+//     await db.createIndex({
+//       index: {
+//         fields: ["type"],
+//         name: "idx_type",
+//       },
+//     });
+
+//     await db.createIndex({
+//       index: {
+//         fields: ["type", "workspace_id"],
+//         name: "idx_type_workspace",
+//       },
+//     });
+
+//     await db.createIndex({
+//       index: {
+//         fields: ["type", "user_id"],
+//         name: "idx_type_user",
+//       },
+//     });
+//   } catch (err) {
+//     console.warn("PouchDB index creation failed:", err);
+//   }
+// }
+
 async function ensureIndexes(db, userId) {
   if (initializedIndexes.has(userId)) return;
 
@@ -13,27 +44,19 @@ async function ensureIndexes(db, userId) {
 
   try {
     await db.createIndex({
-      index: {
-        fields: ["type"],
-        name: "idx_type",
-      },
+      index: { fields: ["type"] }
     });
 
     await db.createIndex({
-      index: {
-        fields: ["type", "workspace_id"],
-        name: "idx_type_workspace",
-      },
+      index: { fields: ["type", "workspace_id"] }
     });
 
     await db.createIndex({
-      index: {
-        fields: ["type", "user_id"],
-        name: "idx_type_user",
-      },
+      index: { fields: ["type", "user_id"] }
     });
+
   } catch (err) {
-    console.warn("PouchDB index creation failed:", err);
+    console.warn("Index creation failed:", err);
   }
 }
 

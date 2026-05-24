@@ -44,6 +44,7 @@ export default function Workspace() {
   const { user, session, setUser } = useAuth();
   const { workspaces, teams, loading, reload } = useAppData();
 
+
   const [showForm, setShowForm] = useState(false);
   const [editOrg, setEditOrg] = useState(null);
   const [deleteOrg, setDeleteOrg] = useState(null);

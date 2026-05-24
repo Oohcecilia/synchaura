@@ -1,10 +1,18 @@
+import { useState } from "react";
 import { Menu } from "lucide-react";
 import NotificationBell from "./NotificationBell";
-import tf_logo from "@/assets/tf-logo.png";
 import { cn } from "@/lib/utils";
+import logo_dark from "@/assets/logo_dark.png";
+import logo_light from "@/assets/logo_light.png";
 
 
 export default function MobileNav({ onMenuClick }) {
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    return saved ? saved === "dark" : false;
+  });
+    
+
   return (
     <div className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card">
       <button
@@ -14,26 +22,15 @@ export default function MobileNav({ onMenuClick }) {
         <Menu className="h-5 w-5" />
       </button>
       <div className="flex items-center gap-1">
-        {/* Icon logo */}
-        {/* <div className="h-9 w-9 rounded-xl overflow-hidden bg-background flex items-center justify-center flex-shrink-0">
-          <img
-            src={ts_logo}
-            alt="Teamstar Logo"
-            className="h-full w-full object-cover"
-          />
-        </div> */}
-
-        {/* Text logo (not stretched) */}
         <div
           className={cn(
-            "flex items-center p-1 rounded transition-colors",
-            "dark:bg-primary d dark:shadow-md dark:shadow-primary/25"
+            "flex items-center p-1 rounded transition-colors"
           )}
         >
           <img
-            src={tf_logo}
-            alt="Teamstar Text Logo"
-            className="h-4 w-auto object-contain"
+            src={darkMode ? logo_dark : logo_light}
+            alt="Synchaura"
+            className="h-10 w-auto object-contain"
           />
         </div>
 

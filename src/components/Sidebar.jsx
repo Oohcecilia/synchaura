@@ -15,10 +15,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
-import tf_logo from "@/assets/tf-logo.png";
-import ts_logo from "@/assets/ts-logo.png";
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useAppData } from "@/lib/DataProvider";
+
+import logo_dark from "@/assets/logo_dark.png";
+import logo_light from "@/assets/logo_light.png";
 
 // =========================
 // NAV ITEMS WITH ROLES
@@ -63,6 +64,12 @@ export default function Sidebar({ onClose }) {
   const isMobile = useIsMobile();
   const [hasFullAccess, setHasFullAccess] = useState(true);
 
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    return saved ? saved === "dark" : false;
+  });
+  
+
 
   // =========================
   // ROLE CHECK (SCALABLE)
@@ -96,28 +103,18 @@ export default function Sidebar({ onClose }) {
       {/* Logo */}
       <div className="p-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {isMobile ? (
-            <div className="h-9 w-9 rounded-xl overflow-hidden bg-background  flex items-center justify-center flex-shrink-0">
-              <img
-                src={ts_logo}
-                alt="Teamstar Logo"
-                className="h-full w-full object-cover"
-              />
-            </div>
-          ) : (
+          
             <div
               className={cn(
-                "flex items-center p-1 rounded transition-colors",
-                "dark:bg-primary d dark:shadow-md dark:shadow-primary/25"
+                "flex items-center p-1 rounded transition-colors"
               )}
             >
               <img
-                src={tf_logo}
-                alt="Teamstar Text Logo"
-                className="h-4 w-auto object-contain"
+                src={darkMode ? logo_dark : logo_light}
+                alt="Synchaura"
+                className="h-12 w-auto object-contain"
               />
             </div>
-          )}
         </div>
 
         <div className="flex items-center gap-1">

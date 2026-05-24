@@ -13,7 +13,16 @@ router = APIRouter()
 
 COUCH_SERVER = os.getenv("COUCH_SERVER")
 DB_NAME = os.getenv("DB_NAME")
-ADMIN_AUTH = (os.getenv("COUCH_USER"), os.getenv("COUCH_PASS"))
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = (os.getenv("DB_PASSWORD"))
+ADMIN_AUTH = (DB_USER, DB_PASSWORD)
+
+
+print("COUCH_SERVER:", COUCH_SERVER)
+print("DB_NAME:", DB_NAME)
+print("DB_USER:", DB_USER)
+print("DB_PASSWORD:", DB_PASSWORD)
+print("ADMIN_AUTH:", ADMIN_AUTH)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -143,20 +152,57 @@ def login(data: LoginRequest):
 
 
 @router.post("/register")
+@router.post("/register")
 def register(data: RegisterRequest):
     try:
+        print("\n========== REGISTER START ==========")
+
         now = datetime.utcnow().isoformat()
 
-        if find_user_by_phone(data.phone):
-            return {"success": False, "error": "Phone number already registered"}
+        print("Incoming payload:")
+        print(data.dict())
 
+        print("\nEnvironment:")
+        print("COUCH_SERVER:", COUCH_SERVER)
+        print("DB_NAME:", DB_NAME)
+        print("ADMIN_AUTH:", ADMIN_AUTH)
+
+        # =========================
+        # CHECK EXISTING USER
+        # =========================
+        # existing_user = find_user_by_phone(data.phone)
+        # print("Existing user:", existing_user)
+
+        # if existing_user:
+        #     return {
+        #         "success": False,
+        #         "error": "Phone number already registered"
+        #     }
+
+        # =========================
+        # GENERATE IDS
+        # =========================
         user_id = gen_id("user")
         workspace_id = gen_id("ws")
         membership_id = gen_id("mem")
         notif_id = gen_id("notif")
 
+        print("\nGenerated IDs:")
+        print("user_id:", user_id)
+        print("workspace_id:", workspace_id)
+        print("membership_id:", membership_id)
+        print("notif_id:", notif_id)
+
+        # =========================
+        # TOKEN
+        # =========================
         token = create_access_token({"sub": data.phone})
 
+        print("\nToken generated successfully")
+
+        # =========================
+        # USER DOC
+        # =========================
         user_doc = {
             "_id": user_id,
             "type": "user",
@@ -171,6 +217,12 @@ def register(data: RegisterRequest):
             "updated_at": None,
         }
 
+        print("\nUser doc:")
+        print(user_doc)
+
+        # =========================
+        # WORKSPACE
+        # =========================
         if data.accountType == "team":
             workspace_name = data.workspaceName or "Team Workspace"
             workspace_desc = data.workspaceDesc or ""
@@ -188,6 +240,12 @@ def register(data: RegisterRequest):
             "created_at": now,
         }
 
+        print("\nWorkspace doc:")
+        print(workspace_doc)
+
+        # =========================
+        # MEMBERSHIP
+        # =========================
         membership_doc = {
             "_id": membership_id,
             "type": "membership",
@@ -199,6 +257,12 @@ def register(data: RegisterRequest):
             "created_at": now,
         }
 
+        print("\nMembership doc:")
+        print(membership_doc)
+
+        # =========================
+        # NOTIFICATION
+        # =========================
         notification = {
             "_id": notif_id,
             "type": "notification",
@@ -212,14 +276,56 @@ def register(data: RegisterRequest):
             "created_at": now,
         }
 
+        print("\nNotification doc:")
+        print(notification)
+
+        # =========================
+        # REQUEST
+        # =========================
+        request_url = f"{COUCH_SERVER}/{DB_NAME}/_bulk_docs"
+
+        print("\nSending request to CouchDB...")
+        print("URL:", request_url)
+
+        payload = {
+            "docs": [
+                user_doc,
+                workspace_doc,
+                membership_doc,
+                notification,
+            ]
+        }
+
+        print("\nPayload:")
+        print(payload)
+
         res = requests.post(
-            f"{COUCH_SERVER}/{DB_NAME}/_bulk_docs",
-            json={"docs": [user_doc, workspace_doc, membership_doc, notification]},
+            request_url,
+            json=payload,
             auth=ADMIN_AUTH,
         )
 
+        print("\nCouchDB response:")
+        print("Status:", res.status_code)
+        print("Headers:", dict(res.headers))
+        print("Body:", res.text)
+
+        # =========================
+        # RESPONSE CHECK
+        # =========================
         if res.status_code not in (200, 201, 202):
-            raise HTTPException(status_code=500, detail="Failed to create user")
+            print("\nFAILED TO CREATE USER")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Failed to create user",
+                    "status": res.status_code,
+                    "response": res.text,
+                },
+            )
+
+        print("\nUSER CREATED SUCCESSFULLY")
+        print("========== REGISTER END ==========\n")
 
         return {
             "success": True,
@@ -233,9 +339,19 @@ def register(data: RegisterRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
+    except Exception as e:
+        import traceback
+
+        print("\n========== REGISTER ERROR ==========")
+        print("Error:", str(e))
+        traceback.print_exc()
+        print("====================================\n")
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
 
 @router.post("/auth/verify-session")
 def verify_session(body: VerifySessionBody):

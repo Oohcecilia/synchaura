@@ -126,6 +126,7 @@ export function DataProvider({ children }) {
     hasTeams,
   };
 
+
   return (
     <DataContext.Provider
       value={{

@@ -19,6 +19,7 @@ const getUserId = (user) => {
 
 export async function fetchedUserData(user) {
   const userId = getUserId(user);
+
   if (!userId) return emptyState();
 
   const db = getDB(userId);
@@ -34,6 +35,7 @@ export async function fetchedUserData(user) {
       "user",
     ]);
 
+
     const byType = docs.reduce((acc, doc) => {
       if (!doc?.type) return acc;
       acc[doc.type] = acc[doc.type] || [];
@@ -43,6 +45,7 @@ export async function fetchedUserData(user) {
 
     const memberships = byType.membership || [];
     const workspaces = byType.workspace || [];
+
     const myMemberships = memberships.filter((m) => String(m.user_id) === String(userId));
 
     if (!myMemberships.length) return emptyState();
@@ -86,6 +89,7 @@ export async function fetchedUserData(user) {
       phone: member.phone,
       first_name: member.first_name,
     }));
+
 
     return {
       tasks: filteredTasks,

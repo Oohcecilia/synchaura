@@ -30,7 +30,7 @@ const setStorage = (key, value) => {
 // -------------------------
 export const appConfig = {
   // App identity (your own system, not Base44)
-  appName: "teamstar",
+  appName: "synchaura",
 
   // CouchDB server (change in production)
   couchUrl:
