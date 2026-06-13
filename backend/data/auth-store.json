@@ -1,0 +1,186 @@
+{
+  "users": [
+    {
+      "_id": "user_ejr1TOJpLg9e",
+      "type": "user",
+      "first_name": "Test",
+      "last_name": "User",
+      "full_name": "Test User",
+      "phone": "9990001234",
+      "pin_hash": "$2b$12$HEMGv57nWeLIuNwjXS2h0OOZzpQdtdrdg8rbpJ8pFYAYX5gbYUM0G",
+      "email": "9990001234@app.local",
+      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5OTkwMDAxMjM0IiwiZXhwIjoxNzgxNDIyMDIxfQ.LAgKVGpbWv1vi4xXrjoFB-jjnedoOpygQ8b7zMAdsKyER4ImaiwFOsdJbBBZ0M4TY4INiI_brY3bxFv0AC4szg",
+      "created_at": "2026-06-13T07:27:01.802186",
+      "updated_at": "2026-06-13T07:27:03.533852"
+    },
+    {
+      "_id": "user_lcuX2IH12dBh",
+      "type": "user",
+      "first_name": "Local",
+      "last_name": "Api",
+      "full_name": "Local Api",
+      "phone": "9990002222",
+      "pin_hash": "$2b$12$83J7tI7/ZFfrTJqott.2IexgqO7CcbjJDY7zE9MT5psXUumRovPLe",
+      "email": "9990002222@app.local",
+      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5OTkwMDAyMjIyIiwiZXhwIjoxNzgxNDIyMTMwfQ.m8QNkpivD5nFNPGcZ3LxDrhicLXOIzpDgnJ_oiLsPcPl0rInQigwH9qLFXJhj1LifHUymfHyaegJ0ZZz3tlFYw",
+      "created_at": "2026-06-13T07:28:50.936408",
+      "updated_at": "2026-06-13T07:28:52.677996"
+    },
+    {
+      "_id": "user_5QUA_8aWHae9",
+      "type": "user",
+      "first_name": "Public",
+      "last_name": "Api",
+      "full_name": "Public Api",
+      "phone": "9990003333",
+      "pin_hash": "$2b$12$uxRlfN8FRnbZec2sTPETu.yRKlpUo.mlyBS7a5zLNNCvhBNcsczQK",
+      "email": "9990003333@app.local",
+      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5OTkwMDAzMzMzIiwiZXhwIjoxNzgxNDIyMTMzfQ.5yLHWIVqOGrRg5tI-Si-CFktENnX7ardGRSqNEzXxJwikfqarW36R9HtX0YUcDqLziFwm6GehF4xDBqq23yBng",
+      "created_at": "2026-06-13T07:28:53.649395",
+      "updated_at": "2026-06-13T07:28:56.226201"
+    },
+    {
+      "_id": "user_5WjCiJHNryS6",
+      "type": "user",
+      "first_name": "larry",
+      "last_name": "cecilia",
+      "full_name": "larry cecilia",
+      "phone": "09812961533",
+      "pin_hash": "$2b$12$s8fPeFxPKQYgRpxJqu3ZcudRLQrwgYtZihJKlH3srJItOQXgTejzO",
+      "email": "09812961533@app.local",
+      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwOTgxMjk2MTUzMyIsImV4cCI6MTc4MTQyMjIyMn0.yRShjrEdpTBj6CO-eLELKpqwysoISIgxyZv0DbTOXxD9WizUJo0psxCWbZqVtDvoKGHWHLVaLp0Kz-RcU9Nwnw",
+      "created_at": "2026-06-13T07:30:22.031359",
+      "updated_at": "2026-06-13T07:46:04.308971"
+    }
+  ],
+  "workspaces": [
+    {
+      "_id": "ws_FvqQKpt9-qHx",
+      "type": "workspace",
+      "account_type": "personal",
+      "name": "Test's Workspace",
+      "description": "Personal workspace",
+      "owner_id": "user_ejr1TOJpLg9e",
+      "created_at": "2026-06-13T07:27:01.802186"
+    },
+    {
+      "_id": "ws_itfuuHohbq48",
+      "type": "workspace",
+      "account_type": "personal",
+      "name": "Local's Workspace",
+      "description": "Personal workspace",
+      "owner_id": "user_lcuX2IH12dBh",
+      "created_at": "2026-06-13T07:28:50.936408"
+    },
+    {
+      "_id": "ws_dxWVptRHENK-",
+      "type": "workspace",
+      "account_type": "personal",
+      "name": "Public's Workspace",
+      "description": "Personal workspace",
+      "owner_id": "user_5QUA_8aWHae9",
+      "created_at": "2026-06-13T07:28:53.649395"
+    },
+    {
+      "_id": "ws_ByofqLs_uvrX",
+      "type": "workspace",
+      "account_type": "personal",
+      "name": "larry's Workspace",
+      "description": "Personal workspace",
+      "owner_id": "user_5WjCiJHNryS6",
+      "created_at": "2026-06-13T07:30:22.031359"
+    }
+  ],
+  "memberships": [
+    {
+      "_id": "mem_fbfcoPvJWm-Q",
+      "type": "membership",
+      "user_id": "user_ejr1TOJpLg9e",
+      "workspace_id": "ws_FvqQKpt9-qHx",
+      "role": "owner",
+      "team_ids": [],
+      "user_ids": [],
+      "created_at": "2026-06-13T07:27:01.802186"
+    },
+    {
+      "_id": "mem_yhvr7Dn47_t1",
+      "type": "membership",
+      "user_id": "user_lcuX2IH12dBh",
+      "workspace_id": "ws_itfuuHohbq48",
+      "role": "owner",
+      "team_ids": [],
+      "user_ids": [],
+      "created_at": "2026-06-13T07:28:50.936408"
+    },
+    {
+      "_id": "mem_sAgWMX8zDBnB",
+      "type": "membership",
+      "user_id": "user_5QUA_8aWHae9",
+      "workspace_id": "ws_dxWVptRHENK-",
+      "role": "owner",
+      "team_ids": [],
+      "user_ids": [],
+      "created_at": "2026-06-13T07:28:53.649395"
+    },
+    {
+      "_id": "mem_A793qTO0HtKr",
+      "type": "membership",
+      "user_id": "user_5WjCiJHNryS6",
+      "workspace_id": "ws_ByofqLs_uvrX",
+      "role": "owner",
+      "team_ids": [],
+      "user_ids": [],
+      "created_at": "2026-06-13T07:30:22.031359"
+    }
+  ],
+  "notifications": [
+    {
+      "_id": "notif_MxrIKDswsMoW",
+      "type": "notification",
+      "category": "info",
+      "title": "Welcome to your workspace",
+      "message": "Welcome Test User! Your workspace is set up and ready to go!",
+      "user_id": "user_ejr1TOJpLg9e",
+      "created_by": "System",
+      "read": [],
+      "status": "Pending",
+      "created_at": "2026-06-13T07:27:01.802186"
+    },
+    {
+      "_id": "notif_2eliVMw_AKUX",
+      "type": "notification",
+      "category": "info",
+      "title": "Welcome to your workspace",
+      "message": "Welcome Local Api! Your workspace is set up and ready to go!",
+      "user_id": "user_lcuX2IH12dBh",
+      "created_by": "System",
+      "read": [],
+      "status": "Pending",
+      "created_at": "2026-06-13T07:28:50.936408"
+    },
+    {
+      "_id": "notif_aTii-rLI_Rls",
+      "type": "notification",
+      "category": "info",
+      "title": "Welcome to your workspace",
+      "message": "Welcome Public Api! Your workspace is set up and ready to go!",
+      "user_id": "user_5QUA_8aWHae9",
+      "created_by": "System",
+      "read": [],
+      "status": "Pending",
+      "created_at": "2026-06-13T07:28:53.649395"
+    },
+    {
+      "_id": "notif__So-P-djYOY8",
+      "type": "notification",
+      "category": "info",
+      "title": "Welcome to your workspace",
+      "message": "Welcome larry cecilia! Your workspace is set up and ready to go!",
+      "user_id": "user_5WjCiJHNryS6",
+      "created_by": "System",
+      "read": [],
+      "status": "Pending",
+      "created_at": "2026-06-13T07:30:22.031359"
+    }
+  ]
+}

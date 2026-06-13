@@ -10,6 +10,12 @@ const __dirname = path.dirname(__filename)
 export default defineConfig({
   plugins: [react()],
 
+  preview: {
+    host: "127.0.0.1",
+    port: 3001,
+    allowedHosts: ["synchaura.dpdns.org"],
+  },
+
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src")

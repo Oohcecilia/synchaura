@@ -18,5 +18,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api")
 app.include_router(couch_proxy_router)
 app.include_router(google_calendar_router)
+app.include_router(google_calendar_router, prefix="/api")
