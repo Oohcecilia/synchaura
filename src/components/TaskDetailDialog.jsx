@@ -2,10 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createRecord, hasTaskAccess } from "@/db/helpers";
-import { getTasksLogs, getTeam, getUser } from "@/db/api";
-import { Play, Square, Clock, Calendar, MapPin, Users, TrendingUp, Edit, Bot, FileText, MessageSquare, Trash2, UsersRound } from "lucide-react";
-import { AttachmentsViewer } from "@/components/TaskAttachments";
+import { Play, Square, Clock, Calendar, MapPin, Users, TrendingUp, Edit, Bot, FileText, MessageSquare } from "lucide-react";
 import TaskThread from "@/components/TaskThread";
 import TaskAgents from "@/components/TaskAgents";
 import TaskReports from "@/components/TaskReports";
@@ -13,16 +10,6 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { getDB } from "@/db/couch";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 const priorityConfig = {
     high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",

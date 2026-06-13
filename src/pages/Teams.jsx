@@ -144,7 +144,7 @@ export default function Teams() {
     setForm({
       name: "",
       description: "",
-      org_id: "",
+      organization_id: "",
       color: "blue",
       member_ids: [],
     });
@@ -155,7 +155,7 @@ export default function Teams() {
     setEditTeam(team);
     setForm({
       ...team,
-      org_id: team.org_id || team.org_id,
+      organization_id: team.organization_id || team.org_id || "",
       member_ids: team.member_ids || [],
     });
     setShowForm(true);
@@ -171,7 +171,7 @@ export default function Teams() {
     const db = getDB(user?.id);
     if (!db) return;
 
-    if (!form.name || !form.org_id) return;
+    if (!form.name || !form.organization_id) return;
 
     try {
       // =========================
@@ -276,7 +276,7 @@ export default function Teams() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {teams.map((team) => {
-            const org = orgMap[team.org_id || team.org_id];
+            const org = orgMap[team.organization_id || team.org_id];
             const teamMembers = getTeamMembers(team._id);
 
             return (
@@ -368,11 +368,11 @@ export default function Teams() {
             <div>
               <Label>Organization</Label>
               <Select
-                value={form.org_id}
+                value={form.organization_id}
                 onValueChange={(v) =>
                   setForm({
                     ...form,
-                    org_id: v,
+                    organization_id: v,
                     member_ids: [],
                   })
                 }
@@ -382,7 +382,7 @@ export default function Teams() {
                 </SelectTrigger>
 
                 <SelectContent>
-                  {workspace.map((org) => (
+                  {workspaces.map((org) => (
                     <SelectItem key={org._id} value={org._id}>
                       {org.name}
                     </SelectItem>
