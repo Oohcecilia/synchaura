@@ -1,0 +1,22 @@
+<svg width="192" height="192" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title>Synchaura</title>
+  <desc>Local-first workspace icon with sync nodes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#173126"/>
+      <stop offset="1" stop-color="#35664a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="96" y1="112" x2="416" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f7d06a"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#bg)"/>
+  <path d="M150 286c0-58 48-106 106-106s106 48 106 106-48 106-106 106c-31 0-59-13-78-33" stroke="url(#accent)" stroke-width="28" stroke-linecap="round"/>
+  <path d="M174 152h92l-24-24m24 24-24 24" stroke="#f7d06a" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="194" cy="182" r="20" fill="#f7d06a"/>
+  <circle cx="318" cy="274" r="20" fill="#f7d06a"/>
+  <circle cx="226" cy="366" r="20" fill="#f7d06a"/>
+  <path d="M323 214h34c34 0 61 27 61 61s-27 61-61 61h-20" stroke="#f7d06a" stroke-width="22" stroke-linecap="round"/>
+  <path d="M338 336h-86c-34 0-61-27-61-61s27-61 61-61h22" stroke="#f7d06a" stroke-width="22" stroke-linecap="round"/>
+</svg>

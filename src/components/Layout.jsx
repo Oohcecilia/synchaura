@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
 import { useState } from "react";
+import NetworkStatusBanner from "./NetworkStatusBanner";
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -33,6 +34,7 @@ export default function Layout() {
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+          <NetworkStatusBanner />
           <Outlet />
         </main>
       </div>
