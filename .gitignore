@@ -60,3 +60,4 @@ htmlcov/
 docker-compose.yml
 backup.txt
 entities/
+backend/data/auth-store.local.json

@@ -19,6 +19,7 @@ import MapPage from './pages/MapPage';
 import Settings from './pages/Settings';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import GoogleAuthCallback from './pages/GoogleAuthCallback';
 import SetupPage from './pages/SplashScreen';
 
 
@@ -68,6 +69,7 @@ function App() {
             {/* ========================= PUBLIC ========================= */}
             <Route path="/auth" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
 
             {/* ========================= PRIVATE ROOT ========================= */}
             <Route

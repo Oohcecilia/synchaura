@@ -1,8 +1,9 @@
-from jose import jwt, JWTError
-from datetime import datetime, timedelta
 import os
+from datetime import datetime, timedelta
 
-SECRET_KEY = os.getenv("SECRET_KEY")
+from jose import JWTError, jwt
+
+SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET") or "dev-secret"
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 

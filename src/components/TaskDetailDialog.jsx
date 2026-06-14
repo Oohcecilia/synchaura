@@ -43,15 +43,12 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
     
     const intervalRef = useRef(null);
 
-    console.log(`SESSION : }`, session);
-
     // ==========================================
     // 1. FUNCTION DECLARATIONS (Moved UP to avoid TDZ)
     // ==========================================
 
     const loadLogs = async () => {
 
-        console.log("TASK ", task);
         if (!task?._id || !session?.userId) return;
         const db = getDB(session.userId);
         try {

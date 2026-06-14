@@ -46,7 +46,7 @@ export const appConfig = {
       return id;
     })(),
 
-  // Auth token (your future PIN/login system)
+  // Auth token for the current sign-in flow
   token: getStorage("auth_token"),
 
   setToken(token) {

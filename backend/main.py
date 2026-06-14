@@ -1,3 +1,7 @@
+from env import load_local_env
+
+load_local_env()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.auth import router as auth_router
@@ -9,8 +13,13 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://synchaura.dpdns.org",
         "http://localhost:5173",
         "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
     ],
     allow_credentials=True,
     allow_methods=["*"],

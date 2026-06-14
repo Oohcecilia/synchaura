@@ -77,9 +77,7 @@ export default function SyncProvider({ children }) {
             setTimeout(() => {
               if (!cancelled) setShowSync(false);
             }, 500);
-          } catch (err) {
-            console.warn("Initial sync failed:", err);
-
+        } catch (err) {
             if (!cancelled) {
               setStatus("error");
               setProgress(100);
@@ -113,8 +111,6 @@ export default function SyncProvider({ children }) {
           },
         });
       } catch (err) {
-        console.warn("Sync initialization failed:", err);
-
         if (!cancelled) {
           setStatus("error");
           setShowSync(false);

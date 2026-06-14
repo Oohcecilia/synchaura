@@ -31,7 +31,7 @@ export default function usePouchChanges(user, callback, type) {
           callback(doc);
         }
       })
-      .on("error", console.error);
+      .on("error", () => {});
 
     return () => changes.cancel();
   }, [userId, type, callback]);

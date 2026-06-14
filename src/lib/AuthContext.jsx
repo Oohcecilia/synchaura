@@ -177,7 +177,7 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener("online", handleOnline);
   }, [verifySession]);
 
-  const login = useCallback(async ({ phone, pin }) => {
+  const login = useCallback(async ({ phone, password }) => {
     try {
       setIsLoadingAuth(false);
       setAuthError(null);
@@ -186,7 +186,7 @@ export const AuthProvider = ({ children }) => {
         method: "POST",
         requireAuth: false,
         timeoutMs: 0,
-        body: { username: phone, password: pin },
+        body: { username: phone, password },
       });
 
       if (!data?.success) {
@@ -205,6 +205,7 @@ export const AuthProvider = ({ children }) => {
         token: data.token,
         workspaceId: data.workspace || data.workspace_id || data.db,
       };
+      sessionData.mustChangePassword = Boolean(data.must_change_password);
 
       const normalizedUser = normalizeUser(userSession, sessionData);
 
@@ -217,6 +218,34 @@ export const AuthProvider = ({ children }) => {
       setAuthError(err.message || "Login failed");
       throw err;
     }
+  }, [saveSession]);
+
+  const completeOAuthSession = useCallback((payload) => {
+    if (!payload?.token || !payload?.userId) {
+      throw new Error("Google login failed");
+    }
+
+    const normalizedUser = normalizeUser(payload.user || null, {
+      userId: payload.userId,
+      token: payload.token,
+    });
+
+    const sessionData = {
+      userId: payload.userId,
+      token: payload.token,
+      workspaceId: payload.workspaceId || payload.user?.workspaceId || null,
+      user: payload.user || normalizedUser,
+    };
+
+    setAuthError(null);
+    saveSession(sessionData, normalizedUser);
+    setUser(normalizedUser);
+    setIsAuthenticated(true);
+
+    return {
+      session: sessionData,
+      user: normalizedUser,
+    };
   }, [saveSession]);
 
   const register = useCallback(async (formData) => {
@@ -261,6 +290,46 @@ export const AuthProvider = ({ children }) => {
     }
   }, [saveSession]);
 
+  const changePassword = useCallback(async ({ currentPassword, newPassword }) => {
+    if (!session?.userId || !session?.token) {
+      throw new Error("You need to be signed in to change your password");
+    }
+
+    try {
+      setAuthError(null);
+
+      const data = await apiRequest("/auth/change-password", {
+        method: "POST",
+        requireAuth: false,
+        timeoutMs: 0,
+        body: {
+          userId: session.userId,
+          token: session.token,
+          currentPassword,
+          newPassword,
+        },
+      });
+
+      if (!data?.success) {
+        throw new Error(data?.detail || data?.error || "Password update failed");
+      }
+
+      if (data?.user) {
+        const normalizedUser = normalizeUser(data.user, session);
+        setUser(normalizedUser);
+        saveSession({
+          ...session,
+          user: normalizedUser,
+        }, normalizedUser);
+      }
+
+      return data;
+    } catch (err) {
+      setAuthError(err.message || "Password update failed");
+      throw err;
+    }
+  }, [saveSession, session]);
+
   const memberships = useMemo(() => getMemberships(user), [user]);
   const hasFullAccess = useMemo(
     () => memberships.some((m) => m.role === "owner" || m.role === "admin"),
@@ -284,7 +353,9 @@ export const AuthProvider = ({ children }) => {
     hasOwnerAccess,
 
     login,
+    completeOAuthSession,
     register,
+    changePassword,
     logout,
     setUser,
     setAuthError,
@@ -299,7 +370,9 @@ export const AuthProvider = ({ children }) => {
     hasFullAccess,
     hasOwnerAccess,
     login,
+    completeOAuthSession,
     register,
+    changePassword,
     logout,
   ]);
 
