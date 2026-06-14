@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { getDB } from "@/db/couch";
 
 const getUserId = (user) => {
@@ -9,6 +9,11 @@ const getUserId = (user) => {
 
 export default function usePouchChanges(user, callback, type) {
   const userId = getUserId(user);
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     if (!userId) return;
@@ -28,11 +33,11 @@ export default function usePouchChanges(user, callback, type) {
         if (!doc) return;
 
         if (!type || doc?.type === type || doc?._deleted) {
-          callback(doc);
+          callbackRef.current?.(doc);
         }
       })
       .on("error", () => {});
 
     return () => changes.cancel();
-  }, [userId, type, callback]);
+  }, [userId, type]);
 }

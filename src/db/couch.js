@@ -44,15 +44,24 @@ async function ensureIndexes(db, userId) {
 
   try {
     await db.createIndex({
-      index: { fields: ["type"] }
+      index: {
+        fields: ["type"],
+        name: "idx_type",
+      },
     });
 
     await db.createIndex({
-      index: { fields: ["type", "workspace_id"] }
+      index: {
+        fields: ["type", "workspace_id"],
+        name: "idx_type_workspace",
+      },
     });
 
     await db.createIndex({
-      index: { fields: ["type", "user_id"] }
+      index: {
+        fields: ["type", "user_id"],
+        name: "idx_type_user",
+      },
     });
 
   } catch (err) {
@@ -69,7 +78,10 @@ export function getDB(userId) {
     // Stable per-user/device DB name. PouchDB persists this IndexedDB database
     // across reloads and app sessions until explicitly destroyed.
     databases[userId] = new PouchDB(`ts_local_${userId}`);
-    ensureIndexes(databases[userId], userId);
+    if (typeof databases[userId].setMaxListeners === "function") {
+      databases[userId].setMaxListeners(50);
+    }
+    databases[userId].__synchauraIndexReady = ensureIndexes(databases[userId], userId);
   }
 
   return databases[userId];
@@ -77,9 +89,10 @@ export function getDB(userId) {
 
 export async function getDocsByType(db, type) {
   try {
+    await db.__synchauraIndexReady?.catch(() => {});
+
     const result = await db.find({
       selector: { type },
-      use_index: "idx_type",
     });
 
     return result.docs || [];
@@ -97,11 +110,12 @@ export async function getDocsByTypes(db, types = []) {
   if (!types.length) return [];
 
   try {
+    await db.__synchauraIndexReady?.catch(() => {});
+
     const result = await db.find({
       selector: {
         type: { $in: types },
       },
-      use_index: "idx_type",
     });
 
     return result.docs || [];

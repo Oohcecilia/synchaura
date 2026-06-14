@@ -1,5 +1,6 @@
 import PouchDB from "pouchdb/dist/pouchdb.js";
 
+import { API_URL } from "@/api/client";
 import { getDB } from "./couch";
 
 import {
@@ -7,7 +8,6 @@ import {
   markDBInitialized,
 } from "./meta";
 
-const API_URL = import.meta.env.VITE_API_URL;
 const INITIAL_SYNC_TIMEOUT_MS = 20000;
 
 let syncHandler = null;

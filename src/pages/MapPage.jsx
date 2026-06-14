@@ -7,17 +7,9 @@ import TaskFormDialog from "../components/TaskFormDialog";
 import "leaflet/dist/leaflet.css";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
 import { useAuth } from "@/lib/AuthContext";
+import { ensureLeafletDefaultIcons } from "@/lib/leaflet-icons";
 
-import L from "leaflet";
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-});
+ensureLeafletDefaultIcons();
 
 export default function MapPage() {
   const { user } = useAuth();

@@ -93,9 +93,9 @@ export default function Sidebar({ onClose }) {
     return dataMap[item.hideWhenEmpty];
   });
   
-  const handleLogout = () => {
-    logout();
-    navigate("/auth");
+  const handleLogout = async () => {
+    await logout();
+    navigate("/auth", { replace: true });
   };
 
   return (

@@ -42,6 +42,20 @@ async function cacheResponse(cacheName, request, response) {
   await cache.put(request, response.clone());
 }
 
+function uniqueRequests(urls) {
+  const seen = new Set();
+
+  return urls
+    .filter(Boolean)
+    .map((url) => new Request(url, { credentials: "same-origin" }))
+    .filter((request) => {
+      const key = request.url;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 async function precacheShell() {
   const cache = await caches.open(STATIC_CACHE);
   const response = await fetch(new Request(APP_SHELL, { cache: "no-store" }));
@@ -51,11 +65,14 @@ async function precacheShell() {
 
     const html = await response.text();
     const assetUrls = extractShellAssetUrls(html);
-    const requests = [APP_SHELL, ...SHELL_ASSETS, ...assetUrls]
-      .filter(Boolean)
-      .map((url) => new Request(url, { credentials: "same-origin" }));
+    const requests = uniqueRequests([APP_SHELL, ...SHELL_ASSETS, ...assetUrls]);
 
-    await cache.addAll(requests);
+    for (const request of requests) {
+      const assetResponse = await fetch(request);
+      if (assetResponse.ok) {
+        await cache.put(request, assetResponse.clone());
+      }
+    }
   }
 }
 

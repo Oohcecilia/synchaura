@@ -233,7 +233,9 @@ export default function Settings() {
 
           <Button
             variant="outline"
-            onClick={logout}
+            onClick={async () => {
+              await logout();
+            }}
             className="border-destructive/20 text-destructive hover:bg-destructive/10 dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-950/30"
           >
             Sign out

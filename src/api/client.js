@@ -1,11 +1,17 @@
-export const API_URL = import.meta.env.VITE_API_URL || "/api";
+const rawApiUrl = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+
+export const API_URL = rawApiUrl
+  ? rawApiUrl.endsWith("/api")
+    ? rawApiUrl
+    : `${rawApiUrl}/api`
+  : "/api";
 
 function getSessionToken() {
   try {
     const session = JSON.parse(localStorage.getItem("session") || "{}");
-    return session?.token || localStorage.getItem("token") || null;
+    return session?.token || null;
   } catch {
-    return localStorage.getItem("token") || null;
+    return null;
   }
 }
 
@@ -53,7 +59,19 @@ export async function apiRequest(
     }
 
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
+    let data = {};
+
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = {
+          success: false,
+          error: text,
+          raw: text,
+        };
+      }
+    }
 
     if (!res.ok) {
       const error = new Error(data?.error || data?.detail || "API request failed");

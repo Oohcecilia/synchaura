@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
 
 import { apiRequest } from "@/api/client";
@@ -12,6 +13,17 @@ import { closeLocalDB } from "@/db/couch";
 
 const AuthContext = createContext();
 const STORAGE_KEY = "session";
+const LEGACY_STORAGE_KEYS = ["token", "auth_token"];
+
+const isSameSession = (a, b) =>
+  Boolean(a?.userId && a?.token && b?.userId && b?.token) &&
+  String(a.userId) === String(b.userId) &&
+  String(a.token) === String(b.token);
+
+const clearAuthStorage = () => {
+  localStorage.removeItem(STORAGE_KEY);
+  LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+};
 
 const readStoredSession = () => {
   try {
@@ -21,7 +33,7 @@ const readStoredSession = () => {
     const parsed = JSON.parse(stored);
     return parsed?.token && parsed?.userId ? parsed : null;
   } catch {
-    localStorage.removeItem(STORAGE_KEY);
+    clearAuthStorage();
     return null;
   }
 };
@@ -74,6 +86,7 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(false);
   const [isVerifyingSession, setIsVerifyingSession] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const sessionRef = useRef(initialSession);
 
   const saveSession = useCallback((data, userSnapshot = null) => {
     if (!data?.userId || !data?.token) return;
@@ -84,16 +97,24 @@ export const AuthProvider = ({ children }) => {
       user: userSnapshot ? normalizeUser(userSnapshot, data) : data.user || null,
     };
 
+    clearAuthStorage();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(safeSession));
+    sessionRef.current = safeSession;
     setSession(safeSession);
+    setIsLoadingAuth(false);
+    setIsVerifyingSession(false);
   }, []);
 
   const clearSession = useCallback(() => {
+    sessionRef.current = null;
     setSession(null);
     setUser(null);
     setActiveWorkspace(null);
     setIsAuthenticated(false);
-    localStorage.removeItem(STORAGE_KEY);
+    setIsLoadingAuth(false);
+    setIsVerifyingSession(false);
+    setAuthError(null);
+    clearAuthStorage();
   }, []);
 
   const logout = useCallback(async () => {
@@ -114,6 +135,10 @@ export const AuthProvider = ({ children }) => {
 
     try {
       setIsVerifyingSession(true);
+      const requestSession = {
+        userId: sessionData.userId,
+        token: sessionData.token,
+      };
 
       const res = await apiRequest("/auth/verify-session", {
         method: "POST",
@@ -125,8 +150,14 @@ export const AuthProvider = ({ children }) => {
         },
       });
 
+      if (!isSameSession(sessionRef.current, requestSession)) {
+        return { valid: false, invalid: false, skipped: true };
+      }
+
       if (!res?.success || !res?.user) {
-        if (clearOnInvalid) clearSession();
+        if (clearOnInvalid && isSameSession(sessionRef.current, requestSession)) {
+          clearSession();
+        }
         return { valid: false, invalid: true };
       }
 
@@ -138,7 +169,9 @@ export const AuthProvider = ({ children }) => {
       return { valid: true, invalid: false, user: verifiedUser };
     } catch (err) {
       if (isInvalidSessionError(err)) {
-        if (clearOnInvalid) clearSession();
+        if (clearOnInvalid && isSameSession(sessionRef.current, sessionData)) {
+          clearSession();
+        }
         return { valid: false, invalid: true, error: err };
       }
 
@@ -153,11 +186,13 @@ export const AuthProvider = ({ children }) => {
     const stored = readStoredSession();
 
     if (!stored) {
+      clearAuthStorage();
       setIsLoadingAuth(false);
       return;
     }
 
     const hydratedUser = normalizeUser(stored.user, stored);
+    sessionRef.current = stored;
     setSession(stored);
     setUser(hydratedUser);
     setIsAuthenticated(true);
@@ -170,6 +205,7 @@ export const AuthProvider = ({ children }) => {
     const handleOnline = () => {
       const stored = readStoredSession();
       if (!stored) return;
+      sessionRef.current = stored;
       verifySession(stored, { clearOnInvalid: true });
     };
 

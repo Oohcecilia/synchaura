@@ -309,6 +309,19 @@ def _mirror_account_to_couch(store: dict, user_doc: dict) -> None:
         _couch_upsert(dict(doc))
 
 
+def _mirror_account_to_couch_async(store: dict, user_doc: dict) -> None:
+    snapshot_store = json.loads(json.dumps(store))
+    snapshot_user = json.loads(json.dumps(user_doc))
+
+    def runner():
+        try:
+            _mirror_account_to_couch(snapshot_store, snapshot_user)
+        except Exception as exc:
+            print(f"[auth] async couch mirror failed: {exc}")
+
+    threading.Thread(target=runner, daemon=True).start()
+
+
 def _build_oauth_redirect_url(payload: dict) -> str:
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -426,10 +439,7 @@ def login(data: LoginRequest):
         }
 
     if mirror_store and mirror_user:
-        try:
-            _mirror_account_to_couch(mirror_store, mirror_user)
-        except Exception as exc:
-            print(f"[auth] login mirror skipped: {exc}")
+        _mirror_account_to_couch_async(mirror_store, mirror_user)
 
     return response
 
@@ -537,7 +547,7 @@ def register(data: RegisterRequest):
             registered_store = _load_store()
             registered_user = _find_user(registered_store, user_id=result.get("user_id"))
             if registered_user:
-                _mirror_account_to_couch(registered_store, registered_user)
+                _mirror_account_to_couch_async(registered_store, registered_user)
         except Exception as exc:
             print(f"[auth] registration mirror skipped: {exc}")
 
@@ -672,10 +682,7 @@ def google_callback(code: str = "", state: str = ""):
         }
 
     if mirror_store and mirror_user:
-        try:
-            _mirror_account_to_couch(mirror_store, mirror_user)
-        except Exception as exc:
-            print(f"[auth] google mirror skipped: {exc}")
+        _mirror_account_to_couch_async(mirror_store, mirror_user)
 
     return RedirectResponse(_build_oauth_redirect_url(session_payload))
 
