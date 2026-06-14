@@ -6,37 +6,6 @@ PouchDB.plugin(PouchDBFind);
 let databases = {};
 let initializedIndexes = new Set();
 
-// async function ensureIndexes(db, userId) {
-//   if (initializedIndexes.has(userId)) return;
-
-//   initializedIndexes.add(userId);
-
-//   try {
-//     await db.createIndex({
-//       index: {
-//         fields: ["type"],
-//         name: "idx_type",
-//       },
-//     });
-
-//     await db.createIndex({
-//       index: {
-//         fields: ["type", "workspace_id"],
-//         name: "idx_type_workspace",
-//       },
-//     });
-
-//     await db.createIndex({
-//       index: {
-//         fields: ["type", "user_id"],
-//         name: "idx_type_user",
-//       },
-//     });
-//   } catch (err) {
-//     console.warn("PouchDB index creation failed:", err);
-//   }
-// }
-
 async function ensureIndexes(db, userId) {
   if (initializedIndexes.has(userId)) return;
 
@@ -63,7 +32,6 @@ async function ensureIndexes(db, userId) {
         name: "idx_type_user",
       },
     });
-
   } catch (err) {
     console.warn("Index creation failed:", err);
   }
@@ -75,8 +43,6 @@ export function getDB(userId) {
   }
 
   if (!databases[userId]) {
-    // Stable per-user/device DB name. PouchDB persists this IndexedDB database
-    // across reloads and app sessions until explicitly destroyed.
     databases[userId] = new PouchDB(`ts_local_${userId}`);
     if (typeof databases[userId].setMaxListeners === "function") {
       databases[userId].setMaxListeners(50);
@@ -147,9 +113,6 @@ export async function destroyLocalDB(userId) {
   initializedIndexes.delete(userId);
 }
 
-// Backward-compatible alias. This now only closes the in-memory handle and
-// preserves the user's persistent IndexedDB cache. Use destroyLocalDB only for
-// explicit account-data wipe flows.
 export function resetLocalDB(userId) {
   return closeLocalDB(userId);
 }

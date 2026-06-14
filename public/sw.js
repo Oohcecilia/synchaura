@@ -22,7 +22,7 @@ function toAbsoluteUrl(url) {
 
 function extractShellAssetUrls(html) {
   const urls = new Set();
-  const regex = /(?:src|href)=["']([^"'#?]+(?:\?[^"']*)?)["']/g;
+  const regex = /(?:src|href)=["']([^"'?#]+(?:\?[^"']*)?)["']/g;
   let match;
 
   while ((match = regex.exec(html))) {

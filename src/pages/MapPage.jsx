@@ -14,7 +14,6 @@ ensureLeafletDefaultIcons();
 export default function MapPage() {
   const { user } = useAuth();
 
-  // ✅ GLOBAL SYNCED DATA (NO FETCHING HERE)
   const {
     tasks,
     teams,

@@ -12,15 +12,9 @@ import { ensureLeafletDefaultIcons } from "@/lib/leaflet-icons";
 
 ensureLeafletDefaultIcons();
 
-// -----------------------------
-// DEFAULT LOCATION → Philippines
-// -----------------------------
-const DEFAULT_CENTER = [12.8797, 121.774]; // Philippines
+const DEFAULT_CENTER = [12.8797, 121.774];
 const DEFAULT_ZOOM = 6;
 
-// -----------------------------
-// Map Click Handler
-// -----------------------------
 function ClickHandler({ onMapClick }) {
   useMapEvents({
     click(e) {
@@ -30,9 +24,6 @@ function ClickHandler({ onMapClick }) {
   return null;
 }
 
-// -----------------------------
-// Fly to position
-// -----------------------------
 function FlyTo({ lat, lng }) {
   const map = useMap();
 
@@ -45,9 +36,6 @@ function FlyTo({ lat, lng }) {
   return null;
 }
 
-// -----------------------------
-// MAIN COMPONENT
-// -----------------------------
 export default function LocationPicker({ value, onChange }) {
   const [search, setSearch] = useState(value?.location_name || "");
   const [suggestions, setSuggestions] = useState([]);
@@ -57,22 +45,15 @@ export default function LocationPicker({ value, onChange }) {
   const lat = value?.latitude;
   const lng = value?.longitude;
 
-  // ✅ IMPORTANT FIX → handle 0 properly
   const hasCoords = lat !== null && lat !== undefined && lng !== null && lng !== undefined;
 
   const center = hasCoords ? [lat, lng] : DEFAULT_CENTER;
   const zoom = hasCoords ? 14 : DEFAULT_ZOOM;
 
-  // -----------------------------
-  // Sync search on edit
-  // -----------------------------
   useEffect(() => {
     setSearch(value?.location_name || "");
   }, [value?.location_name]);
 
-  // -----------------------------
-  // Fetch Suggestions
-  // -----------------------------
   const fetchSuggestions = useCallback(async (q) => {
     if (!q || q.length < 3) {
       setSuggestions([]);
@@ -100,9 +81,6 @@ export default function LocationPicker({ value, onChange }) {
     }, 400);
   };
 
-  // -----------------------------
-  // Select Suggestion
-  // -----------------------------
   const selectSuggestion = (item) => {
     const newLat = parseFloat(item.lat);
     const newLng = parseFloat(item.lon);
@@ -124,9 +102,6 @@ export default function LocationPicker({ value, onChange }) {
     });
   };
 
-  // -----------------------------
-  // Map Click → Reverse Geocode
-  // -----------------------------
   const handleMapClick = (newLat, newLng) => {
     fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${newLat}&lon=${newLng}&format=json`,
@@ -159,9 +134,6 @@ export default function LocationPicker({ value, onChange }) {
       });
   };
 
-  // -----------------------------
-  // Clear Location
-  // -----------------------------
   const clearLocation = () => {
     setSearch("");
     setSuggestions([]);
@@ -173,12 +145,8 @@ export default function LocationPicker({ value, onChange }) {
     });
   };
 
-  // -----------------------------
-  // UI
-  // -----------------------------
   return (
     <div className="space-y-2">
-      {/* SEARCH */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 
@@ -199,7 +167,6 @@ export default function LocationPicker({ value, onChange }) {
           </button>
         )}
 
-        {/* Suggestions */}
         {suggestions.length > 0 && (
           <div className="absolute z-[1000] top-full left-0 right-0 mt-1 bg-popover border rounded-lg shadow-lg">
             {suggestions.map((item) => (
@@ -217,7 +184,6 @@ export default function LocationPicker({ value, onChange }) {
         )}
       </div>
 
-      {/* MAP */}
       <div className="rounded-xl overflow-hidden border h-52">
         <MapContainer
           center={center}
@@ -231,16 +197,13 @@ export default function LocationPicker({ value, onChange }) {
 
           <ClickHandler onMapClick={handleMapClick} />
 
-          {/* ✅ Fly on edit OR select */}
           {hasCoords && <FlyTo lat={lat} lng={lng} />}
           {flyTarget && <FlyTo lat={flyTarget.lat} lng={flyTarget.lng} />}
 
-          {/* ✅ Marker shows correctly */}
           {hasCoords && <Marker position={[lat, lng]} />}
         </MapContainer>
       </div>
 
-      {/* COORDS */}
       {hasCoords && (
         <p className="text-xs text-muted-foreground">
           {lat.toFixed(5)}, {lng.toFixed(5)}

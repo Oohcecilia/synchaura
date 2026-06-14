@@ -41,50 +41,30 @@
   }
 
   .dark {
-    /* Base */
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
-
-    /* Surfaces */
     --card: 222.2 47% 8%;
     --card-foreground: 210 40% 98%;
-
     --popover: 222.2 47% 8%;
     --popover-foreground: 210 40% 98%;
-
-    /* Primary (soft blue-white) */
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47% 11%;
-
-    /* Secondary (muted slate layers) */
     --secondary: 217.2 32.6% 12%;
     --secondary-foreground: 210 40% 98%;
-
-    /* Muted (background layers) */
     --muted: 217.2 32.6% 12%;
     --muted-foreground: 215 20.2% 65%;
-
-    /* Accent (hover states) */
     --accent: 217.2 32.6% 14%;
     --accent-foreground: 210 40% 98%;
-
-    /* Destructive */
     --destructive: 0 62% 30%;
     --destructive-foreground: 210 40% 98%;
-
-    /* Borders (soft + glassy feel) */
     --border: 217.2 32.6% 18%;
     --input: 217.2 32.6% 18%;
     --ring: 212.7 26.8% 83.9%;
-
-    /* Charts (optional but nicer gradients) */
     --chart-1: 220 70% 55%;
     --chart-2: 160 60% 50%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 60%;
-
-    /* Sidebar (more depth than main UI) */
     --sidebar-background: 222.2 84% 3.5%;
     --sidebar-foreground: 210 40% 98%;
     --sidebar-primary: 210 40% 98%;
@@ -93,7 +73,6 @@
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 217.2 32.6% 18%;
     --sidebar-ring: 212.7 26.8% 83.9%;
-
     --radius: 0.75rem;
   }
 }
@@ -112,9 +91,6 @@
   }
 }
 
-
-
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
