@@ -103,6 +103,19 @@
       "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIrMDk4NzY1NDMyMSIsImV4cCI6MTc4MTUzODczMX0.nsVEc3c__7mj-C6aTA1M8ReL4xVAhGoEiPMnoq5UxfhBp_-0vadDN29XBC7SUywm5VlZqgypOuSn3dhNwBJOoQ",
       "created_at": "2026-06-14T15:52:11.144584",
       "updated_at": "2026-06-14T15:52:11.144584"
+    },
+    {
+      "_id": "user_a2sgNC2Thlh9",
+      "type": "user",
+      "first_name": "Test",
+      "last_name": "User",
+      "full_name": "Test User",
+      "phone": "5556249316",
+      "email": "codex-1781496249316@example.com",
+      "password_hash": "$2b$12$aoiS/ub3JjrZatbemgAg3.ZV885PHwOpgMXhfcjke/lRC7jzrbUeS",
+      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTU2MjQ5MzE2IiwiZXhwIjoxNzgxNTgyNDAxfQ.qA8oX3-tmPN1l-O95Oz4VN3qozr14S59yeBusqjEZF-38CZyKo7Xz-g6lqaNRtF2GvqB-PNIgwPl-i-PlCF7sQ",
+      "created_at": "2026-06-15T04:00:01.774004",
+      "updated_at": "2026-06-15T04:00:01.774004"
     }
   ],
   "workspaces": [
@@ -177,6 +190,15 @@
       "description": "Personal workspace",
       "owner_id": "user_JXFe9_3w7TAV",
       "created_at": "2026-06-14T15:52:11.144584"
+    },
+    {
+      "_id": "ws_cbx5-XJDQK2L",
+      "type": "workspace",
+      "account_type": "personal",
+      "name": "Test's Workspace",
+      "description": "Personal workspace",
+      "owner_id": "user_a2sgNC2Thlh9",
+      "created_at": "2026-06-15T04:00:01.774004"
     }
   ],
   "memberships": [
@@ -259,6 +281,16 @@
       "team_ids": [],
       "user_ids": [],
       "created_at": "2026-06-14T15:52:11.144584"
+    },
+    {
+      "_id": "mem_HZDvKOY1cR8S",
+      "type": "membership",
+      "user_id": "user_a2sgNC2Thlh9",
+      "workspace_id": "ws_cbx5-XJDQK2L",
+      "role": "owner",
+      "team_ids": [],
+      "user_ids": [],
+      "created_at": "2026-06-15T04:00:01.774004"
     }
   ],
   "notifications": [
@@ -357,6 +389,18 @@
       "read": [],
       "status": "Pending",
       "created_at": "2026-06-14T15:52:11.144584"
+    },
+    {
+      "_id": "notif_H91UwTsz7LQz",
+      "type": "notification",
+      "category": "info",
+      "title": "Welcome to your workspace",
+      "message": "Welcome Test User! Your workspace is set up and ready to go!",
+      "user_id": "user_a2sgNC2Thlh9",
+      "created_by": "System",
+      "read": [],
+      "status": "Pending",
+      "created_at": "2026-06-15T04:00:01.774004"
     }
   ]
 }
