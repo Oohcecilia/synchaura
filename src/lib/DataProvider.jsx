@@ -15,7 +15,7 @@ const EMPTY_DATA = {
 };
 
 export function DataProvider({ children }) {
-  const { isAuthenticated, session, setUser } = useAuth();
+  const { isAuthenticated, session, setUser, setMemberships } = useAuth();
   const [hasMembers, setHasMembers] = useState(false);
   const [hasTeams, setHasTeam] = useState(false);
   const [data, setData] = useState(EMPTY_DATA);
@@ -47,13 +47,14 @@ export function DataProvider({ children }) {
         ...(userAccess.user || {}),
         id: session.userId,
         _id: session.userId,
-        memberships: userAccess.memberships ?? prev?.memberships ?? [],
-        access_rights: userAccess.memberships ?? prev?.access_rights ?? [],
       }));
+      if (Array.isArray(userAccess.memberships) && userAccess.memberships.length) {
+        setMemberships(userAccess.memberships);
+      }
     } catch (err) {
       console.warn("Background user access refresh failed:", err);
     }
-  }, [session?.userId, setUser]);
+  }, [session?.userId, setMemberships, setUser]);
 
   const loadData = useCallback(async ({ background = false } = {}) => {
     if (!session?.userId) return;

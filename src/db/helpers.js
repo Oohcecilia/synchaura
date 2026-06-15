@@ -2,6 +2,87 @@ import { getDB } from "@/db/couch";
 import { nanoid } from "nanoid";
 import { getDocument } from "./api";
 
+const getAccessWorkspaceId = (access) => access?.workspace_id || access?.org_id || null;
+
+export async function getMembershipAccessForUser(userId) {
+  if (!userId) return [];
+
+  const db = getDB(userId);
+  if (!db) return [];
+
+  try {
+    const result = await db.allDocs({ include_docs: true });
+    return (result.rows || [])
+      .map((row) => row.doc)
+      .filter((doc) => doc?.type === "membership" && String(doc.user_id) === String(userId))
+      .map((doc) => ({
+        workspace_id: doc.workspace_id,
+        role: doc.role || "member",
+        team_ids: Array.isArray(doc.team_ids) ? doc.team_ids : [],
+        _id: doc._id,
+      }));
+  } catch (err) {
+    console.error("Error fetching membership access:", err);
+    return [];
+  }
+}
+
+export async function upsertMembershipAccess(userId, access) {
+  if (!userId || !access) return null;
+
+  const db = getDB(userId);
+  if (!db) return null;
+
+  const workspaceId = getAccessWorkspaceId(access);
+  if (!workspaceId) return null;
+
+  const role = access.role || "member";
+  const teamIds = Array.isArray(access.team_ids)
+    ? access.team_ids
+    : Array.isArray(access.team_id)
+      ? access.team_id
+      : [];
+
+  try {
+    const result = await db.allDocs({ include_docs: true });
+    const existing = (result.rows || [])
+      .map((row) => row.doc)
+      .find((doc) =>
+        doc?.type === "membership" &&
+        String(doc.user_id) === String(userId) &&
+        String(doc.workspace_id) === String(workspaceId)
+      );
+
+    const now = new Date().toISOString();
+
+    const nextDoc = existing
+      ? {
+          ...existing,
+          role,
+          team_ids: teamIds,
+          updated_at: now,
+          org_id: undefined,
+          team_id: undefined,
+        }
+      : {
+          _id: `mem_${nanoid()}`,
+          type: "membership",
+          user_id: userId,
+          workspace_id: workspaceId,
+          role,
+          team_ids: teamIds,
+          created_at: now,
+          updated_at: now,
+        };
+
+    await db.put(nextDoc);
+    return nextDoc;
+  } catch (err) {
+    console.error("Error upserting membership access:", err);
+    throw err;
+  }
+}
+
 // GENERIC CREATE
 export async function createRecord(userId, storeName, data) {
   // 1. Get the DB instance for the user
@@ -55,8 +136,8 @@ export async function getByOrg(user, storeName, orgIds = []) {
 }
 
 export async function getUserOrgIds(user) {
-  return (user?.access_rights || [])
-    .map((a) => a.org_id)
+  return (user?.access_rights || user?.memberships || [])
+    .map((a) => a.org_id || a.workspace_id)
     .filter(Boolean);
 }
 

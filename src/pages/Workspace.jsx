@@ -41,7 +41,7 @@ import { getSavedTheme, applyTheme } from "@/utils/theme";
 import { nanoid } from "nanoid";
 
 export default function Workspace() {
-  const { user, session, setUser } = useAuth();
+  const { session, memberships, setMemberships } = useAuth();
   const { workspaces, teams, loading, reload } = useAppData();
 
 
@@ -114,7 +114,7 @@ export default function Workspace() {
 
         await db.bulkDocs([newWorkspace, membership]);
 
-        const existingAccess = user?.memberships || user?.access_rights || [];
+        const existingAccess = memberships || [];
         const nextAccess = [
           ...existingAccess,
           {
@@ -124,11 +124,7 @@ export default function Workspace() {
           },
         ];
 
-        setUser?.({
-          ...(user || {}),
-          memberships: nextAccess,
-          access_rights: nextAccess,
-        });
+        setMemberships?.(nextAccess);
       }
 
       setShowForm(false);

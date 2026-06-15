@@ -90,6 +90,8 @@ def sanitize_user(user_doc: dict) -> dict:
     user.pop("pin", None)
     user.pop("pin_hash", None)
     user.pop("token", None)
+    user.pop("memberships", None)
+    user.pop("access_rights", None)
     return user
 
 
@@ -183,13 +185,10 @@ def _user_session(store: dict, user_doc: dict) -> dict:
     user = sanitize_user(user_doc)
     user["id"] = user_doc["_id"]
     user["_id"] = user_doc["_id"]
-    user["memberships"] = memberships
-    user["access_rights"] = memberships
     return {
         "id": user_doc["_id"],
         "name": f"{user_doc.get('first_name', '')} {user_doc.get('last_name', '')}".strip(),
         "email": user_doc.get("email"),
-        "access_rights": memberships,
         "memberships": memberships,
         "user": user,
     }
@@ -296,8 +295,6 @@ def _mirror_account_to_couch(store: dict, user_doc: dict) -> None:
     couch_user["type"] = "user"
     couch_user["id"] = user_doc["_id"]
     couch_user["_id"] = user_doc["_id"]
-    couch_user["memberships"] = memberships
-    couch_user["access_rights"] = memberships
 
     docs_to_sync = [couch_user, *workspace_docs]
 
@@ -384,6 +381,7 @@ def _find_google_user(store: dict, *, google_sub: str, email: str | None):
 
 @router.post("/login")
 def login(data: LoginRequest):
+    print("LOGGING USER LOGIN.....")
     mirror_store = None
     mirror_user = None
     response = None
@@ -417,7 +415,7 @@ def login(data: LoginRequest):
         if not valid:
             return {"success": False, "error": "Invalid email or phone number"}
 
-        token = user_doc.get("token") or create_access_token({"sub": data.username})
+        token = create_access_token({"sub": user_doc["_id"]})
         user_doc["token"] = token
         user_doc["updated_at"] = datetime.utcnow().isoformat()
         _save_store(store)
@@ -435,6 +433,7 @@ def login(data: LoginRequest):
             "token": token,
             "workspace": "synchaura",
             "user_session": user_session,
+            "memberships": _memberships_for_user(store, user_doc["_id"]),
             "must_change_password": bool(is_legacy_credential and not user_doc.get("password_hash")),
         }
 
@@ -469,7 +468,7 @@ def register(data: RegisterRequest):
             workspace_id = gen_id("ws")
             membership_id = gen_id("mem")
             notif_id = gen_id("notif")
-            token = create_access_token({"sub": data.phone})
+            token = create_access_token({"sub": user_id})
 
             if data.accountType == "team":
                 workspace_name = data.workspaceName or "Team Workspace"
@@ -491,6 +490,8 @@ def register(data: RegisterRequest):
                 "created_at": now,
                 "updated_at": now,
             }
+
+            print(f"\n\n user document {user_doc} \n\n")
 
             workspace_doc = {
                 "_id": workspace_id,
@@ -538,10 +539,13 @@ def register(data: RegisterRequest):
                 "user_id": user_id,
                 "db": "synchaura",
                 "workspace_id": workspace_id,
+                "memberships": [membership_doc],
                 "user": sanitize_user(user_doc),
             }
 
         result = _store_mutation(create_registration)
+
+        print(f"\n\n result {result} \n\n")
 
         try:
             registered_store = _load_store()
@@ -679,6 +683,7 @@ def google_callback(code: str = "", state: str = ""):
             "is_new_user": is_new_user,
             "flow": flow,
             "user": _user_session(store, user_doc),
+            "memberships": _memberships_for_user(store, user_doc["_id"]),
         }
 
     if mirror_store and mirror_user:

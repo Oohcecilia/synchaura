@@ -9,6 +9,7 @@ import {
   Plus,
   ArrowRight,
   TrendingUp,
+  Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -138,16 +139,15 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <Button
-          onClick={() => {
-            setEditTask(null);
-            setShowForm(true);
-          }}
-          className="rounded-xl shadow-lg shadow-primary/25"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Task
-        </Button>
+
+        <Link to="/settings">
+          <Button
+            variant="outline"
+            className="rounded-xl h-auto p-2 justify-start w-full"
+          >
+            <Settings className="h-6 w-6"/>
+          </Button>
+        </Link>
       </div>
 
       {/* Stats */}
@@ -238,7 +238,7 @@ export default function Dashboard() {
                   setShowForm(true);
                 }}
               >
-                Create Task
+                What's on your mind?
               </Button>
             }
             className

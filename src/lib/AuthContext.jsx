@@ -14,6 +14,7 @@ import { closeLocalDB } from "@/db/couch";
 const AuthContext = createContext();
 const STORAGE_KEY = "session";
 const LEGACY_STORAGE_KEYS = ["token", "auth_token"];
+const EMPTY_MEMBERSHIPS = [];
 
 const isSameSession = (a, b) =>
   Boolean(a?.userId && a?.token && b?.userId && b?.token) &&
@@ -41,10 +42,18 @@ const readStoredSession = () => {
 const getUserId = (value) =>
   value?.userId || value?.id || value?._id || value?.user?.id || value?.user?._id || null;
 
+const stripMembershipFields = (value) => {
+  if (!value) return null;
+  const { memberships, access_rights, ...rest } = value;
+  return rest;
+};
+
 const getMemberships = (value) => {
   if (!value) return [];
   if (Array.isArray(value.memberships)) return value.memberships;
   if (Array.isArray(value.access_rights)) return value.access_rights;
+  if (Array.isArray(value.session?.memberships)) return value.session.memberships;
+  if (Array.isArray(value.session?.access_rights)) return value.session.access_rights;
   if (Array.isArray(value.user?.memberships)) return value.user.memberships;
   if (Array.isArray(value.user?.access_rights)) return value.user.access_rights;
   return [];
@@ -52,19 +61,17 @@ const getMemberships = (value) => {
 
 const normalizeUser = (value, fallback = {}) => {
   if (!value) {
-    return fallback.userId ? { id: fallback.userId, _id: fallback.userId, memberships: [] } : null;
+    return fallback.userId ? { id: fallback.userId, _id: fallback.userId } : null;
   }
 
   const baseUser = value.user && typeof value.user === "object" ? value.user : value;
+  const cleanUser = stripMembershipFields(baseUser);
   const id = getUserId(baseUser) || getUserId(value) || fallback.userId || null;
-  const memberships = getMemberships(value);
 
   return {
-    ...baseUser,
+    ...cleanUser,
     id,
-    _id: baseUser._id || id,
-    memberships,
-    access_rights: baseUser.access_rights || memberships,
+    _id: cleanUser._id || id,
   };
 };
 
@@ -76,10 +83,12 @@ const isInvalidSessionError = (err) => {
 
 const initialSession = readStoredSession();
 const initialUser = initialSession ? normalizeUser(initialSession.user, initialSession) : null;
+const initialMemberships = getMemberships(initialSession);
 
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(initialSession);
   const [user, setUser] = useState(initialUser);
+  const [memberships, setMemberships] = useState(initialMemberships);
   const [activeWorkspace, setActiveWorkspace] = useState(null);
 
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(initialSession));
@@ -87,13 +96,21 @@ export const AuthProvider = ({ children }) => {
   const [isVerifyingSession, setIsVerifyingSession] = useState(false);
   const [authError, setAuthError] = useState(null);
   const sessionRef = useRef(initialSession);
+  const membershipsRef = useRef(initialMemberships);
+
+  useEffect(() => {
+    membershipsRef.current = memberships;
+  }, [memberships]);
 
   const saveSession = useCallback((data, userSnapshot = null) => {
     if (!data?.userId || !data?.token) return;
 
+    const nextMemberships = getMemberships(data);
+    const resolvedMemberships = nextMemberships.length ? nextMemberships : membershipsRef.current;
     const safeSession = {
       userId: data.userId,
       token: data.token,
+      memberships: resolvedMemberships,
       user: userSnapshot ? normalizeUser(userSnapshot, data) : data.user || null,
     };
 
@@ -101,6 +118,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(safeSession));
     sessionRef.current = safeSession;
     setSession(safeSession);
+    setMemberships(resolvedMemberships);
     setIsLoadingAuth(false);
     setIsVerifyingSession(false);
   }, []);
@@ -109,6 +127,7 @@ export const AuthProvider = ({ children }) => {
     sessionRef.current = null;
     setSession(null);
     setUser(null);
+    setMemberships(EMPTY_MEMBERSHIPS);
     setActiveWorkspace(null);
     setIsAuthenticated(false);
     setIsLoadingAuth(false);
@@ -195,6 +214,7 @@ export const AuthProvider = ({ children }) => {
     sessionRef.current = stored;
     setSession(stored);
     setUser(hydratedUser);
+    setMemberships(getMemberships(stored));
     setIsAuthenticated(true);
     setIsLoadingAuth(false);
 
@@ -213,15 +233,63 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener("online", handleOnline);
   }, [verifySession]);
 
+  // const login = useCallback(async ({ phone, password }) => {
+  //   try {
+  //     setIsLoadingAuth(false);
+  //     setAuthError(null);
+
+  //     console.log(`phone ${phone} pwd ${password}`);
+
+  //     const data = await apiRequest("/login", {
+  //       method: "POST",
+  //       requireAuth: false,
+  //       timeoutMs: 0,
+  //       body: { username: phone, password },
+  //     });
+
+  //     console.log(`LOGIN LOG ${JSON.stringify(data)}`);
+
+  //     if (!data?.success) {
+  //       throw new Error(data?.error || "Invalid credentials");
+  //     }
+
+  //     const userSession = data.user_session || data.user;
+  //     const userId = getUserId(userSession) || data.user_id;
+
+  //     if (!userId || !data.token) {
+  //       throw new Error("Login response was missing session data");
+  //     }
+
+  //     const sessionData = {
+  //       userId,
+  //       token: data.token,
+  //       workspaceId: data.workspace || data.workspace_id || data.db,
+  //     };
+  //     sessionData.mustChangePassword = Boolean(data.must_change_password);
+
+  //     const normalizedUser = normalizeUser(userSession, sessionData);
+
+  //     saveSession(sessionData, normalizedUser);
+  //     setUser(normalizedUser);
+  //     setIsAuthenticated(true);
+
+  //     return sessionData;
+  //   } catch (err) {
+  //     setAuthError(err.message || "Login failed");
+  //     throw err;
+  //   }
+  // }, [saveSession]);
+
+
   const login = useCallback(async ({ phone, password }) => {
     try {
-      setIsLoadingAuth(false);
+      setIsLoadingAuth(true);
       setAuthError(null);
 
       const data = await apiRequest("/login", {
         method: "POST",
         requireAuth: false,
-        timeoutMs: 0,
+        timeoutMs: 15000,
         body: { username: phone, password },
       });
 
@@ -240,6 +308,7 @@ export const AuthProvider = ({ children }) => {
         userId,
         token: data.token,
         workspaceId: data.workspace || data.workspace_id || data.db,
+        memberships: getMemberships(data),
       };
       sessionData.mustChangePassword = Boolean(data.must_change_password);
 
@@ -253,6 +322,8 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       setAuthError(err.message || "Login failed");
       throw err;
+    } finally {
+      setIsLoadingAuth(false);
     }
   }, [saveSession]);
 
@@ -270,6 +341,7 @@ export const AuthProvider = ({ children }) => {
       userId: payload.userId,
       token: payload.token,
       workspaceId: payload.workspaceId || payload.user?.workspaceId || null,
+      memberships: getMemberships(payload),
       user: payload.user || normalizedUser,
     };
 
@@ -291,7 +363,7 @@ export const AuthProvider = ({ children }) => {
       const data = await apiRequest("/register", {
         method: "POST",
         requireAuth: false,
-        timeoutMs: 0,
+        timeoutMs: 15000,
         body: formData,
       });
 
@@ -303,14 +375,12 @@ export const AuthProvider = ({ children }) => {
         userId: data.user_id,
         token: data.token,
         workspaceId: data.workspace_id || data.db,
+        memberships: getMemberships(data),
       };
 
       const fallbackUser = {
         id: data.user_id,
         _id: data.user_id,
-        memberships: data.workspace_id
-          ? [{ workspace_id: data.workspace_id, role: "owner", team_ids: [] }]
-          : [],
       };
 
       const normalizedUser = normalizeUser(data.user || fallbackUser, sessionData);
@@ -366,7 +436,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, [saveSession, session]);
 
-  const memberships = useMemo(() => getMemberships(user), [user]);
   const hasFullAccess = useMemo(
     () => memberships.some((m) => m.role === "owner" || m.role === "admin"),
     [memberships]
@@ -385,6 +454,7 @@ export const AuthProvider = ({ children }) => {
     isLoadingAuth,
     isVerifyingSession,
     authError,
+    memberships,
     hasFullAccess,
     hasOwnerAccess,
 
@@ -394,10 +464,12 @@ export const AuthProvider = ({ children }) => {
     changePassword,
     logout,
     setUser,
+    setMemberships,
     setAuthError,
   }), [
     session,
     user,
+    memberships,
     activeWorkspace,
     isAuthenticated,
     isLoadingAuth,
@@ -410,6 +482,7 @@ export const AuthProvider = ({ children }) => {
     register,
     changePassword,
     logout,
+    setMemberships,
   ]);
 
   return (

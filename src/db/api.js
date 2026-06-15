@@ -62,7 +62,28 @@ export async function fetchedUserData(user) {
 
     const workspaceMembers = memberships.filter((membership) => workspaceIds.has(membership.workspace_id));
     const memberIds = new Set(workspaceMembers.map((membership) => membership.user_id));
-    const members = (byType.user || []).filter((member) => memberIds.has(member._id));
+    const memberAccessByUser = workspaceMembers.reduce((acc, membership) => {
+      const key = String(membership.user_id);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push({
+        workspace_id: membership.workspace_id,
+        role: membership.role || "member",
+        team_ids: Array.isArray(membership.team_ids) ? membership.team_ids : [],
+      });
+      return acc;
+    }, {});
+
+    const members = (byType.user || [])
+      .filter((member) => memberIds.has(member._id))
+      .map((member) => {
+        const memberAccess = memberAccessByUser[String(member._id)] || [];
+        return {
+          ...member,
+          membership_access: memberAccess,
+          memberships: memberAccess,
+          access_rights: memberAccess,
+        };
+      });
 
     const filteredTasks = tasks.filter((task) => {
       const membership = getMembershipForWorkspace(task.workspace_id);

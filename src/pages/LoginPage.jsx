@@ -102,6 +102,7 @@ export default function Auth() {
     try {
       setSubmitting(true);
       const result = await login({ phone, password });
+
       navigate(result?.mustChangePassword ? "/settings" : "/", { replace: true });
     } catch (err) {
       setError(err.message || "Login failed");

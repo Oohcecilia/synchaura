@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import React, { useState } from "react";
 import {
   LayoutDashboard,
   CheckSquare,
@@ -15,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
-import { useIsMobile } from "@/hooks/use-mobile"
 import { useAppData } from "@/lib/DataProvider";
 
 import logo_dark from "@/assets/logo_dark.png";
@@ -60,9 +59,7 @@ const navItems = [
 export default function Sidebar({ onClose }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
-  const isMobile = useIsMobile();
-  const [hasFullAccess, setHasFullAccess] = useState(true);
+  const { logout, memberships } = useAuth();
 
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem("theme");
@@ -74,13 +71,7 @@ export default function Sidebar({ onClose }) {
   // =========================
   // ROLE CHECK (SCALABLE)
   // =========================
-  const hasRole = (roles = []) => {
-    return user?.memberships?.some((a) =>
-      roles.includes(a.role)
-    );
-  };
-
-  const { workspaces, teams, members, hasMembers, hasTeams } = useAppData();
+  const { hasMembers, hasTeams } = useAppData();
 
   const dataMap = {
     teams: hasTeams,

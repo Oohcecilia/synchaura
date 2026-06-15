@@ -11,12 +11,13 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Users, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getDB } from "@/db/couch";
 import { useAuth } from "@/lib/AuthContext";
+import { upsertMembershipAccess } from "@/db/helpers";
 
 const ROLES = ["member", "admin"];
 
 const getAccessList = (member) => {
+  if (Array.isArray(member?.membership_access)) return member.membership_access;
   if (Array.isArray(member?.memberships)) return member.memberships;
   if (Array.isArray(member?.access_rights)) return member.access_rights;
   return [];
@@ -32,7 +33,7 @@ export default function MemberAccessDialog({
   teams = [],
   workspaces = [],
 }) {
-  const { session, user, setUser } = useAuth();
+  const { session, user, setUser, setMemberships, memberships } = useAuth();
 
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedRole, setSelectedRole] = useState("member");
@@ -86,43 +87,30 @@ export default function MemberAccessDialog({
     setSaving(true);
 
     try {
-      const db = getDB(session.userId);
-      const dbUser = await db.get(member._id);
-
-      const access = getAccessList(dbUser);
-      const exists = access.some(
-        (entry) => getAccessWorkspaceId(entry) === selectedWorkspace
-      );
-
       const nextEntry = {
         workspace_id: selectedWorkspace,
         role: selectedRole,
         team_ids: selectedTeams ?? [],
       };
 
-      const updatedAccess = exists
-        ? access.map((entry) =>
-            getAccessWorkspaceId(entry) === selectedWorkspace
-              ? { ...entry, ...nextEntry, org_id: undefined, team_id: undefined }
-              : entry
-          )
-        : [...access, nextEntry];
-
-      const updatedUserDoc = {
-        ...dbUser,
-        access_rights: updatedAccess,
-        memberships: updatedAccess,
-        updated_at: new Date().toISOString(),
-      };
-
-      await db.put(updatedUserDoc);
+      await upsertMembershipAccess(member._id, nextEntry);
 
       if (member._id === user?._id || member._id === user?.id) {
-        setUser?.({
-          ...updatedUserDoc,
-          id: updatedUserDoc._id,
-          memberships: updatedAccess,
-        });
+        setUser?.((prev) => ({
+          ...(prev || {}),
+          id: member._id,
+          _id: member._id,
+        }));
+        const currentMemberships = Array.isArray(memberships) ? memberships : [];
+        const updatedMemberships = currentMemberships.some((entry) => getAccessWorkspaceId(entry) === selectedWorkspace)
+          ? currentMemberships.map((entry) =>
+              getAccessWorkspaceId(entry) === selectedWorkspace
+                ? { ...entry, ...nextEntry }
+                : entry
+            )
+          : [...currentMemberships, nextEntry];
+
+        setMemberships?.(updatedMemberships);
       }
 
       window.dispatchEvent(new Event("user:updated"));

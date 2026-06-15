@@ -375,6 +375,18 @@ export default function Register() {
                   </div>
                 </div>
 
+                <div className="rounded-xl border border-border/50 bg-muted/30 p-4 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground mb-2">Password requirements</p>
+                  <ul className="space-y-1.5">
+                    {PASSWORD_RULES.map((rule) => (
+                      <li key={rule} className="flex items-center gap-2.5 text-xs">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground/70" />
+                        {rule}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
                 {/* Workspace Selection Section */}
                 <div className="pt-2">
                   <label className="mb-3 block text-sm font-medium text-foreground">Workspace type</label>
@@ -443,17 +455,7 @@ export default function Register() {
                   </div>
                 )}
 
-                {/* <div className="rounded-xl border border-border/50 bg-muted/30 p-4 text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground mb-2">Password requirements</p>
-                  <ul className="space-y-1.5">
-                    {PASSWORD_RULES.map((rule) => (
-                      <li key={rule} className="flex items-center gap-2.5 text-xs">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground/70" />
-                        {rule}
-                      </li>
-                    ))}
-                  </ul>
-                </div> */}
+                
 
                 {(error || authError) && (
                   <div className="rounded-xl bg-destructive/10 px-3 py-2.5 text-sm font-medium text-destructive">

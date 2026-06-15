@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { getNotifications } from "@/db/api";
 import usePouchChanges from "@/hooks/usePouchChanges";
 import { getDB } from "@/db/couch";
+import { upsertMembershipAccess } from "@/db/helpers";
 
 const typeConfig = {
   task_created: {
@@ -59,7 +60,7 @@ const getUserId = (user) => user?.id || user?._id || user?.userId || user?.user?
 const getNotificationWorkspaceId = (notification) => notification.workspace_id || notification.org_id;
 
 export default function NotificationBell({ position = "right" }) {
-  const { user, session } = useAuth();
+  const { user, session, memberships, setMemberships } = useAuth();
   const userId = getUserId(user) || session?.userId;
 
   const [notifications, setNotifications] = useState([]);
@@ -143,41 +144,32 @@ export default function NotificationBell({ position = "right" }) {
   const acceptInvitation = async (notif) => {
     try {
       if (!userId) return;
-      const db = getDB(userId);
-
-      const targetUser = await db.get(notif.user_id);
-      const currentAccess = Array.isArray(targetUser.access_rights)
-        ? targetUser.access_rights
-        : Array.isArray(targetUser.memberships)
-          ? targetUser.memberships
-          : [];
-
       const workspaceId = getNotificationWorkspaceId(notif);
-      const exists = currentAccess.find(
-        (access) => access.workspace_id === workspaceId || access.org_id === workspaceId
-      );
-
-      const updatedAccess = exists
-        ? currentAccess.map((access) =>
-            access.workspace_id === workspaceId || access.org_id === workspaceId
-              ? { ...access, workspace_id: workspaceId, role: notif.role || "member" }
-              : access
-          )
-        : [
-            ...currentAccess,
-            {
-              workspace_id: workspaceId,
-              role: notif.role || "member",
-              team_ids: [],
-            },
-          ];
-
-      await db.put({
-        ...targetUser,
-        access_rights: updatedAccess,
-        memberships: updatedAccess,
-        updated_at: new Date().toISOString(),
+      await upsertMembershipAccess(notif.user_id, {
+        workspace_id: workspaceId,
+        role: notif.role || "member",
+        team_ids: [],
       });
+
+      if (String(notif.user_id) === String(userId)) {
+        const currentMemberships = Array.isArray(memberships) ? memberships : [];
+        const nextMemberships = currentMemberships.some((entry) => entry.workspace_id === workspaceId)
+          ? currentMemberships.map((entry) =>
+              entry.workspace_id === workspaceId
+                ? { ...entry, workspace_id: workspaceId, role: notif.role || "member", team_ids: [] }
+                : entry
+            )
+          : [
+              ...currentMemberships,
+              {
+                workspace_id: workspaceId,
+                role: notif.role || "member",
+                team_ids: [],
+              },
+            ];
+
+        setMemberships?.(nextMemberships);
+      }
 
       const updatedNotif = await updateNotification(notif, (freshNotif) => {
         const readList = Array.isArray(freshNotif.read) ? freshNotif.read : [];
