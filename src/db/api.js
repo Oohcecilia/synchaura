@@ -1,4 +1,8 @@
 import { getDB, getDocsByType, getDocsByTypes } from "./couch";
+import {
+  ensureDueTaskNotifications,
+  isNotificationVisibleToUser,
+} from "./notification";
 
 function emptyState() {
   return {
@@ -134,33 +138,35 @@ export async function getNotifications(user) {
   if (!db) return { notifications: [], unreadCount: 0 };
 
   try {
-    const docs = await getDocsByTypes(db, ["membership", "notification"]);
+    const docs = await getDocsByTypes(db, ["membership", "notification", "task"]);
     const memberships = docs.filter((doc) => doc.type === "membership");
+    const tasks = docs.filter((doc) => doc.type === "task");
     const notificationDocs = docs.filter((doc) => doc.type === "notification");
+    const taskById = new Map(tasks.map((task) => [String(task._id), task]));
+    const generatedDueNotifications = await ensureDueTaskNotifications(
+      db,
+      userId,
+      tasks,
+      memberships,
+      notificationDocs
+    );
 
-    const workspaceIds = memberships
-      .filter((membership) => {
-        const isMember = String(membership.user_id) === String(userId);
-        const isIncluded =
-          Array.isArray(membership.user_ids) &&
-          membership.user_ids.some((id) => String(id) === String(userId));
+    const notificationMap = new Map(
+      [...notificationDocs, ...generatedDueNotifications].map((notification) => [
+        notification._id,
+        notification,
+      ])
+    );
 
-        return isMember || isIncluded;
-      })
-      .map((membership) => String(membership.workspace_id));
-
-    const notifications = notificationDocs
-      .filter((notification) => {
-        const notificationUserId = notification.user_id ? String(notification.user_id) : null;
-        const notificationWorkspaceId = notification.workspace_id || notification.org_id;
-
-        if (notificationUserId === String(userId)) return true;
-        if (notification.category === "info") return true;
-
-        return notificationWorkspaceId
-          ? workspaceIds.includes(String(notificationWorkspaceId))
-          : false;
-      })
+    const notifications = [...notificationMap.values()]
+      .filter((notification) =>
+        isNotificationVisibleToUser({
+          notification,
+          userId,
+          memberships,
+          taskById,
+        })
+      )
       .sort(
         (a, b) =>
           new Date(b.created_at || 0).getTime() -

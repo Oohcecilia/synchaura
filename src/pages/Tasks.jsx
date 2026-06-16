@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from "react";
 import { useAppData } from "@/lib/DataProvider";
 
 import {
-  Plus,
   CheckSquare,
   Search,
 } from "lucide-react";
@@ -82,10 +81,9 @@ export default function Tasks() {
             setEditTask(null);
             setShowForm(true);
           }}
-          className="rounded-xl shadow-lg shadow-primary/25"
+          className="rounded-xl shadow-lg shadow-primary/25 text-sm"
         >
-          <Plus className="h-4 w-4 mr-2" />
-          New Task
+          What's on you mind?
         </Button>
       </div>
 
@@ -118,19 +116,6 @@ export default function Tasks() {
             search
               ? "Try a different search"
               : "Create your first task to get started"
-          }
-          action={
-            !search && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setEditTask(null);
-                  setShowForm(true);
-                }}
-              >
-                Create Task
-              </Button>
-            )
           }
         />
       ) : (

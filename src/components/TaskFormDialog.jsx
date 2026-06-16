@@ -197,6 +197,7 @@ export default function TaskFormDialog({
             task_id: task._id,
             team_id: data.team_id,
             workspace_id: data.workspace_id,
+            recipient_user_ids: data.assigned_to || [],
             created_by: session.userId,
           },
           session.userId
@@ -219,6 +220,7 @@ export default function TaskFormDialog({
             task_id: finalTaskDoc._id,
             team_id: data.team_id,
             workspace_id: data.workspace_id,
+            recipient_user_ids: data.assigned_to || [],
             created_by: session.userId,
           },
           session.userId

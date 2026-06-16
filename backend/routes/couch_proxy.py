@@ -1,8 +1,10 @@
+import json
 import os
 from urllib.parse import urljoin
 
 import requests
 from fastapi import APIRouter, HTTPException, Request, Response
+from routes.auth import get_authenticated_user
 
 router = APIRouter(prefix="/couch", tags=["couch-proxy"])
 
@@ -38,6 +40,41 @@ async def proxy_couch(path: str, request: Request):
     # _changes, _bulk_get, _bulk_docs, _revs_diff, and document ids.
     method = request.method
     body = await request.body()
+
+    if method == "OPTIONS":
+        return Response(status_code=204)
+
+    user = get_authenticated_user(request)
+    user_id = user.get("_id") or user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    if method == "DELETE":
+        raise HTTPException(status_code=405, detail="CouchDB document deletion is not allowed through the sync proxy")
+
+    if path.startswith("_") and path.split("/", 1)[0] not in {
+        "_all_docs",
+        "_bulk_docs",
+        "_bulk_get",
+        "_changes",
+        "_find",
+        "_revs_diff",
+    }:
+        raise HTTPException(status_code=403, detail="CouchDB endpoint is not allowed through the sync proxy")
+
+    if method in {"POST", "PUT"} and body:
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except json.JSONDecodeError:
+            payload = None
+
+        docs = payload.get("docs") if isinstance(payload, dict) else None
+        if isinstance(docs, list):
+            for doc in docs:
+                if isinstance(doc, dict) and not doc.get("_deleted"):
+                    doc.setdefault("user_id", user_id)
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+
     url = build_couch_url(path)
 
     query_string = request.url.query

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { format, isPast, isToday, differenceInHours } from "date-fns";
 
 import { getDB } from "@/db/couch";
-import { createRecord } from "@/db/helpers";
+import { createNotification } from "@/db/notification";
 import { useAuth } from "@/lib/AuthContext";
 
 
@@ -75,7 +75,8 @@ const intervalLabel = (task) => {
 
 export default function TaskCard({ task, members, onClick, onComplete, onReopen }) {
 
-  const { user } = useAuth();
+  const { user, session } = useAuth();
+  const userId = user?.id || user?._id || session?.userId;
   const priority = priorityConfig[task.priority] || priorityConfig.medium;
   const status = statusConfig[task.status] || statusConfig.upcoming;
   const assignedMembers = (task.assigned_to || [])
@@ -94,8 +95,9 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
 
   const handleComplete = async (task) => {
     try {
+      if (!userId) return;
 
-      const db = getDB(user?.id);
+      const db = getDB(userId);
       
       const updatedTask = {
         ...task,
@@ -107,21 +109,17 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
       // PouchDB uses .put() directly on the instance, not a table string
       await db.put(updatedTask);
 
-      // 2. CREATE NOTIFICATION
-      // Assuming createRecord is already set up to handle PouchDB logic
-      await createRecord(user, "notifications", {
-        type: "notification", // Crucial for your earlier filter logic!
-        category: "task_updated",     // Added so your filter doesn't hide it
+      await createNotification({
+        type: "task_completed",
         title: "Task completed",
         message: `"${task.title}" was marked as completed.`,
         task_id: task._id,
-        org_id: task.org_id ?? null,
+        workspace_id: task.workspace_id ?? task.org_id ?? null,
         team_id: task.team_id ?? null,
-        user_id: user?.id ?? null, // Best to assign the user who did it
-        read: [],
-      });
+        recipient_user_ids: task.assigned_to || [],
+        created_by: userId,
+      }, userId);
 
-      // 3. TRIGGER UI UPDATE
       window.dispatchEvent(
         new CustomEvent("route:changed", {
           detail: { route: window.location.pathname }
@@ -264,7 +262,5 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
     </div>
   );
 }
-
-
 
 

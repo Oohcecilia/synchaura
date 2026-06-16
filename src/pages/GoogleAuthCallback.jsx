@@ -15,11 +15,16 @@ export default function GoogleAuthCallback() {
   const [message, setMessage] = useState("Finishing Google sign-in...");
 
   useEffect(() => {
-    const sessionParam = searchParams.get("session");
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const sessionParam = hashParams.get("session") || searchParams.get("session");
 
     if (!sessionParam) {
       setMessage("Missing Google session data.");
       return;
+    }
+
+    if (hashParams.has("session")) {
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
 
     try {

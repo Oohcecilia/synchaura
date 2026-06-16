@@ -137,15 +137,28 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
-    const userId = session?.userId;
+    const activeSession = sessionRef.current;
+    const userId = activeSession?.userId;
+    const token = activeSession?.token;
     clearSession();
+
+    if (userId && token && navigator.onLine) {
+      apiRequest("/auth/logout", {
+        method: "POST",
+        requireAuth: false,
+        timeoutMs: 5000,
+        body: { userId, token },
+      }).catch((err) => {
+        console.warn("Logout revocation failed", err);
+      });
+    }
 
     try {
       await closeLocalDB(userId);
     } catch (e) {
       console.warn("DB close failed", e);
     }
-  }, [clearSession, session?.userId]);
+  }, [clearSession]);
 
   const verifySession = useCallback(async (sessionData, { clearOnInvalid = true } = {}) => {
     if (!sessionData?.userId || !sessionData?.token || !navigator.onLine) {
@@ -232,54 +245,6 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
   }, [verifySession]);
-
-  // const login = useCallback(async ({ phone, password }) => {
-  //   try {
-  //     setIsLoadingAuth(false);
-  //     setAuthError(null);
-
-  //     console.log(`phone ${phone} pwd ${password}`);
-
-  //     const data = await apiRequest("/login", {
-  //       method: "POST",
-  //       requireAuth: false,
-  //       timeoutMs: 0,
-  //       body: { username: phone, password },
-  //     });
-
-  //     console.log(`LOGIN LOG ${JSON.stringify(data)}`);
-
-  //     if (!data?.success) {
-  //       throw new Error(data?.error || "Invalid credentials");
-  //     }
-
-  //     const userSession = data.user_session || data.user;
-  //     const userId = getUserId(userSession) || data.user_id;
-
-  //     if (!userId || !data.token) {
-  //       throw new Error("Login response was missing session data");
-  //     }
-
-  //     const sessionData = {
-  //       userId,
-  //       token: data.token,
-  //       workspaceId: data.workspace || data.workspace_id || data.db,
-  //     };
-  //     sessionData.mustChangePassword = Boolean(data.must_change_password);
-
-  //     const normalizedUser = normalizeUser(userSession, sessionData);
-
-  //     saveSession(sessionData, normalizedUser);
-  //     setUser(normalizedUser);
-  //     setIsAuthenticated(true);
-
-  //     return sessionData;
-  //   } catch (err) {
-  //     setAuthError(err.message || "Login failed");
-  //     throw err;
-  //   }
-  // }, [saveSession]);
-
 
   const login = useCallback(async ({ phone, password }) => {
     try {

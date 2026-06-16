@@ -8,6 +8,8 @@ import {
   UserPlus,
   Mail,
   Info,
+  AlertTriangle,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -37,6 +39,16 @@ const typeConfig = {
     icon: UserPlus,
     color: "text-purple-500",
     bg: "bg-purple-100 dark:bg-purple-900/30",
+  },
+  task_due_soon: {
+    icon: Clock,
+    color: "text-amber-500",
+    bg: "bg-amber-100 dark:bg-amber-900/30",
+  },
+  task_overdue: {
+    icon: AlertTriangle,
+    color: "text-red-500",
+    bg: "bg-red-100 dark:bg-red-900/30",
   },
   invitation: {
     icon: Mail,
@@ -95,17 +107,7 @@ export default function NotificationBell({ position = "right" }) {
 
   usePouchChanges(userId, (doc) => {
     if (!doc || doc.type !== "notification") return;
-
-    setNotifications((prev) => {
-      const next = doc._deleted
-        ? prev.filter((notification) => notification._id !== doc._id)
-        : prev.some((notification) => notification._id === doc._id)
-          ? prev.map((notification) => notification._id === doc._id ? doc : notification)
-          : [doc, ...prev];
-
-      setUnreadCount(calculateUnreadCount(next));
-      return next;
-    });
+    load();
   }, "notification");
 
   useEffect(() => {

@@ -13,6 +13,15 @@ const INITIAL_SYNC_TIMEOUT_MS = 20000;
 let syncHandler = null;
 let activeUserId = null;
 
+function getSessionToken() {
+  try {
+    const session = JSON.parse(localStorage.getItem("session") || "{}");
+    return session?.token || null;
+  } catch {
+    return null;
+  }
+}
+
 function withTimeout(promise, ms, message) {
   let timeoutId;
 
@@ -24,8 +33,20 @@ function withTimeout(promise, ms, message) {
 }
 
 function createRemoteDB() {
+  const token = getSessionToken();
+
   return new PouchDB(`${API_URL}/couch`, {
     skip_setup: true,
+    fetch: (url, opts = {}) => {
+      const headers = new Headers(opts.headers || {});
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+      return PouchDB.fetch(url, {
+        ...opts,
+        headers,
+      });
+    },
   });
 }
 

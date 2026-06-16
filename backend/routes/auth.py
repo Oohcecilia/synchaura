@@ -1,29 +1,30 @@
 import base64
+import hashlib
 import json
 import os
+import secrets
 import threading
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 import requests
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from nanoid import generate
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from jose import JWTError, jwt
 
-from utils.auth import create_access_token
+from utils.auth import ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, verify_token
 
 router = APIRouter()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-DEFAULT_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "auth-store.json"
-STORE_PATH = Path(os.getenv("AUTH_STORE_PATH") or DEFAULT_STORE_PATH)
-if not STORE_PATH.is_absolute():
-    STORE_PATH = (Path(__file__).resolve().parents[1] / STORE_PATH).resolve()
 STORE_LOCK = threading.Lock()
+LOGIN_RATE_LOCK = threading.Lock()
+LOGIN_ATTEMPTS: dict[str, list[float]] = {}
+LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60
+LOGIN_ATTEMPT_LIMIT = 8
 JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or "dev-secret"
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
@@ -31,9 +32,11 @@ GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI") or "https://synchaura.dpd
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://synchaura.dpdns.org")
 COUCH_SERVER = os.getenv("COUCH_SERVER")
 DB_NAME = os.getenv("DB_NAME")
-COUCH_USER = os.getenv("COUCH_USER")
-COUCH_PASS = os.getenv("COUCH_PASS")
+AUTH_DB_NAME = os.getenv("AUTH_DB_NAME") or os.getenv("COUCH_AUTH_DB") or (f"{DB_NAME}_auth" if DB_NAME else None)
+COUCH_USER = os.getenv("COUCH_USER") or os.getenv("DB_USER")
+COUCH_PASS = os.getenv("COUCH_PASS") or os.getenv("DB_PASSWORD")
 COUCH_AUTH = (COUCH_USER, COUCH_PASS) if COUCH_USER and COUCH_PASS else None
+AUTH_STORE_DOC_ID = "auth_store"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
@@ -68,6 +71,11 @@ class VerifySessionBody(BaseModel):
     token: str
 
 
+class LogoutRequest(BaseModel):
+    userId: str | None = None
+    token: str | None = None
+
+
 def gen_id(prefix: str) -> str:
     return f"{prefix}_{generate(size=12)}"
 
@@ -96,7 +104,7 @@ def sanitize_user(user_doc: dict) -> dict:
 
 
 def _password_meets_policy(password: str) -> bool:
-    if len(password) < 6:
+    if len(password) < 6 or len(password) > 128:
         return False
     if password.isdigit():
         return False
@@ -105,41 +113,116 @@ def _password_meets_policy(password: str) -> bool:
     return any(ch.isdigit() for ch in password) and any(not ch.isalnum() for ch in password)
 
 
+def _check_login_rate_limit(identifier: str) -> None:
+    now = _utcnow().timestamp()
+    key = str(identifier or "").strip().lower() or "unknown"
+
+    with LOGIN_RATE_LOCK:
+        attempts = [
+            stamp
+            for stamp in LOGIN_ATTEMPTS.get(key, [])
+            if now - stamp < LOGIN_ATTEMPT_WINDOW_SECONDS
+        ]
+        if len(attempts) >= LOGIN_ATTEMPT_LIMIT:
+            LOGIN_ATTEMPTS[key] = attempts
+            raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
+        attempts.append(now)
+        LOGIN_ATTEMPTS[key] = attempts
+
+
+def _clear_login_rate_limit(identifier: str) -> None:
+    key = str(identifier or "").strip().lower() or "unknown"
+    with LOGIN_RATE_LOCK:
+        LOGIN_ATTEMPTS.pop(key, None)
+
+
 def _empty_store() -> dict:
     return {
         "users": [],
+        "sessions": [],
         "workspaces": [],
         "memberships": [],
         "notifications": [],
     }
 
 
-def _load_store() -> dict:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not STORE_PATH.exists():
-        store = _empty_store()
-        _save_store(store)
+def _normalise_store(data: dict | None) -> dict:
+    store = _empty_store()
+    if not isinstance(data, dict):
         return store
 
-    try:
-        with STORE_PATH.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except Exception:
-        data = _empty_store()
-
-    store = _empty_store()
     for key in store:
         value = data.get(key, [])
         store[key] = value if isinstance(value, list) else []
     return store
 
 
+def _auth_couch_base_url() -> str | None:
+    if not COUCH_SERVER or not AUTH_DB_NAME or not COUCH_AUTH:
+        return None
+    return f"{COUCH_SERVER.rstrip('/')}/{AUTH_DB_NAME}"
+
+
+def _require_auth_couch_base_url() -> str:
+    base = _auth_couch_base_url()
+    if not base:
+        raise HTTPException(status_code=500, detail="Database authentication is not configured")
+    return base
+
+
+def _ensure_auth_couch_db(base: str) -> None:
+    response = requests.put(base, auth=COUCH_AUTH, timeout=15)
+    if response.status_code not in {200, 201, 202, 412}:
+        response.raise_for_status()
+
+
+def _load_store_from_couch() -> dict:
+    base = _require_auth_couch_base_url()
+
+    try:
+        response = requests.get(f"{base}/{AUTH_STORE_DOC_ID}", auth=COUCH_AUTH, timeout=15)
+        if response.status_code == 404:
+            _ensure_auth_couch_db(base)
+            empty_store = _empty_store()
+            _save_store_to_couch(empty_store)
+            return empty_store
+        response.raise_for_status()
+        return _normalise_store(response.json())
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=503, detail="Database authentication store is unavailable") from exc
+
+
+def _save_store_to_couch(store: dict) -> None:
+    base = _require_auth_couch_base_url()
+
+    try:
+        _ensure_auth_couch_db(base)
+        doc = {
+            "_id": AUTH_STORE_DOC_ID,
+            "type": "auth_store",
+            **_normalise_store(store),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+        existing = requests.get(f"{base}/{AUTH_STORE_DOC_ID}", auth=COUCH_AUTH, timeout=15)
+        if existing.status_code == 200:
+            doc["_rev"] = existing.json().get("_rev")
+        elif existing.status_code != 404:
+            existing.raise_for_status()
+
+        response = requests.put(f"{base}/{AUTH_STORE_DOC_ID}", json=doc, auth=COUCH_AUTH, timeout=15)
+        if response.status_code not in {200, 201, 202}:
+            response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=503, detail="Database authentication store is unavailable") from exc
+
+
+def _load_store() -> dict:
+    return _load_store_from_couch()
+
+
 def _save_store(store: dict) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = STORE_PATH.with_suffix(".json.tmp")
-    with tmp_path.open("w", encoding="utf-8") as handle:
-        json.dump(store, handle, indent=2, ensure_ascii=True)
-    tmp_path.replace(STORE_PATH)
+    _save_store_to_couch(_normalise_store(store))
 
 
 def _store_mutation(mutator):
@@ -165,6 +248,104 @@ def _find_user(
         if user_id is not None and str(user.get("_id")) == str(user_id):
             return user
     return None
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _prune_expired_sessions(store: dict) -> None:
+    now = _utcnow()
+    store["sessions"] = [
+        session
+        for session in store.get("sessions", [])
+        if not session.get("revoked_at")
+        and (_parse_iso_datetime(session.get("expires_at")) or now) >= now
+    ]
+
+
+def _create_session(store: dict, user_id: str) -> tuple[str, dict]:
+    _prune_expired_sessions(store)
+    session_id = gen_id("sess")
+    token = create_access_token({"sub": user_id, "sid": session_id, "nonce": secrets.token_urlsafe(16)})
+    now = _utcnow()
+    session_doc = {
+        "_id": session_id,
+        "type": "auth_session",
+        "user_id": user_id,
+        "token_hash": _token_hash(token),
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)).isoformat(),
+    }
+    store.setdefault("sessions", []).append(session_doc)
+    return token, session_doc
+
+
+def _find_session_for_token(store: dict, user_id: str, token: str) -> dict | None:
+    payload = verify_token(token)
+    if not payload or str(payload.get("sub")) != str(user_id):
+        return None
+
+    session_id = payload.get("sid")
+    token_hash = _token_hash(token)
+    now = _utcnow()
+
+    for session in store.get("sessions", []):
+        if str(session.get("user_id")) != str(user_id):
+            continue
+        if session_id and str(session.get("_id")) != str(session_id):
+            continue
+        if session.get("token_hash") != token_hash:
+            continue
+        if session.get("revoked_at"):
+            return None
+        expires_at = _parse_iso_datetime(session.get("expires_at"))
+        if expires_at and expires_at < now:
+            return None
+        return session
+
+    return None
+
+
+def _require_valid_session(store: dict, user_id: str, token: str) -> dict:
+    user_doc = _find_user(store, user_id=user_id)
+    if not user_doc or user_doc.get("is_deleted") is True:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    session_doc = _find_session_for_token(store, user_id, token)
+    if not session_doc:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    return user_doc
+
+
+def get_authenticated_user(request: Request) -> dict:
+    auth_header = request.headers.get("authorization") or ""
+    token = auth_header.replace("Bearer ", "", 1).strip() if auth_header.startswith("Bearer ") else None
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing authorization token")
+
+    payload = verify_token(token)
+    user_id = payload.get("sub") if payload else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    with STORE_LOCK:
+        store = _load_store()
+        return sanitize_user(_require_valid_session(store, user_id, token))
 
 
 def _memberships_for_user(store: dict, user_id: str) -> list[dict]:
@@ -323,8 +504,7 @@ def _build_oauth_redirect_url(payload: dict) -> str:
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).decode("ascii").rstrip("=")
-    params = urlencode({"session": encoded})
-    return f"{FRONTEND_URL}/auth/google/callback?{params}"
+    return f"{FRONTEND_URL}/auth/google/callback#session={encoded}"
 
 
 def _require_google_config():
@@ -381,13 +561,14 @@ def _find_google_user(store: dict, *, google_sub: str, email: str | None):
 
 @router.post("/login")
 def login(data: LoginRequest):
-    print("LOGGING USER LOGIN.....")
     mirror_store = None
     mirror_user = None
     response = None
+    login_value = str(data.username).strip()
+    _check_login_rate_limit(login_value)
+
     with STORE_LOCK:
         store = _load_store()
-        login_value = str(data.username).strip()
         user_doc = _find_user(
             store,
             phone=login_value,
@@ -413,10 +594,11 @@ def login(data: LoginRequest):
             is_legacy_credential = valid
 
         if not valid:
-            return {"success": False, "error": "Invalid email or phone number"}
+            raise HTTPException(status_code=401, detail="Invalid email, phone number, or password")
 
-        token = create_access_token({"sub": user_doc["_id"]})
-        user_doc["token"] = token
+        _clear_login_rate_limit(login_value)
+        token, _session_doc = _create_session(store, user_doc["_id"])
+        user_doc.pop("token", None)
         user_doc["updated_at"] = datetime.utcnow().isoformat()
         _save_store(store)
         mirror_store = store
@@ -451,14 +633,15 @@ def register(data: RegisterRequest):
         if not _password_meets_policy(data.password):
             raise HTTPException(
                 status_code=400,
-                detail="Password must be at least 6 characters and include uppercase, lowercase, a number, and a symbol.",
+                detail="Password must be 6 to 128 characters and include uppercase, lowercase, a number, and a symbol.",
             )
 
         def create_registration(store: dict):
             email = data.email.strip().lower()
+            phone = str(data.phone).strip()
             existing_user = _find_user(
                 store,
-                phone=data.phone,
+                phone=phone,
                 email=email if email else None,
             )
             if existing_user:
@@ -468,7 +651,7 @@ def register(data: RegisterRequest):
             workspace_id = gen_id("ws")
             membership_id = gen_id("mem")
             notif_id = gen_id("notif")
-            token = create_access_token({"sub": user_id})
+            token, _session_doc = _create_session(store, user_id)
 
             if data.accountType == "team":
                 workspace_name = data.workspaceName or "Team Workspace"
@@ -483,15 +666,12 @@ def register(data: RegisterRequest):
                 "first_name": data.first_name,
                 "last_name": data.last_name,
                 "full_name": f"{data.first_name} {data.last_name}",
-                "phone": data.phone,
+                "phone": phone,
                 "email": email,
                 "password_hash": hash_password(data.password),
-                "token": token,
                 "created_at": now,
                 "updated_at": now,
             }
-
-            print(f"\n\n user document {user_doc} \n\n")
 
             workspace_doc = {
                 "_id": workspace_id,
@@ -544,8 +724,6 @@ def register(data: RegisterRequest):
             }
 
         result = _store_mutation(create_registration)
-
-        print(f"\n\n result {result} \n\n")
 
         try:
             registered_store = _load_store()
@@ -668,8 +846,8 @@ def google_callback(code: str = "", state: str = ""):
             )
             store["users"].append(user_doc)
 
-        token = create_access_token({"sub": user_doc["_id"]})
-        user_doc["token"] = token
+        token, _session_doc = _create_session(store, user_doc["_id"])
+        user_doc.pop("token", None)
         user_doc["updated_at"] = now
 
         _save_store(store)
@@ -697,15 +875,12 @@ def change_password(body: ChangePasswordRequest):
     if not _password_meets_policy(body.newPassword):
         raise HTTPException(
             status_code=400,
-            detail="Password must be at least 6 characters and include uppercase, lowercase, a number, and a symbol.",
+            detail="Password must be 6 to 128 characters and include uppercase, lowercase, a number, and a symbol.",
         )
 
     with STORE_LOCK:
         store = _load_store()
-        user_doc = _find_user(store, user_id=body.userId)
-
-        if not user_doc or user_doc.get("token") != body.token:
-            raise HTTPException(status_code=401, detail="Invalid session")
+        user_doc = _require_valid_session(store, body.userId, body.token)
 
         current_hash = user_doc.get("password_hash") or user_doc.get("pin_hash")
         current_pin = user_doc.get("pin")
@@ -728,6 +903,7 @@ def change_password(body: ChangePasswordRequest):
         user_doc["password_hash"] = hash_password(body.newPassword)
         user_doc.pop("pin_hash", None)
         user_doc.pop("pin", None)
+        user_doc.pop("token", None)
         user_doc["updated_at"] = datetime.utcnow().isoformat()
         _save_store(store)
 
@@ -741,15 +917,40 @@ def change_password(body: ChangePasswordRequest):
 def verify_session(body: VerifySessionBody):
     with STORE_LOCK:
         store = _load_store()
-        user = _find_user(store, user_id=body.userId)
-
-        if not user or user.get("token") != body.token:
-            raise HTTPException(status_code=401, detail="Invalid session")
-
-        if user.get("is_deleted") is True:
-            raise HTTPException(status_code=401, detail="User deleted")
+        user = _require_valid_session(store, body.userId, body.token)
 
         return {
             "success": True,
             "user": sanitize_user(user),
+            "memberships": _memberships_for_user(store, body.userId),
         }
+
+
+@router.post("/auth/logout")
+def logout(body: LogoutRequest, request: Request):
+    token = body.token
+    if not token:
+        auth_header = request.headers.get("authorization") or ""
+        token = auth_header.replace("Bearer ", "", 1).strip() if auth_header.startswith("Bearer ") else None
+    if not token:
+        return {"success": True}
+
+    payload = verify_token(token)
+    user_id = body.userId or (payload.get("sub") if payload else None)
+    session_id = payload.get("sid") if payload else None
+    token_hash = _token_hash(token)
+
+    with STORE_LOCK:
+        store = _load_store()
+        now = _utcnow().isoformat()
+        for session in store.get("sessions", []):
+            if user_id and str(session.get("user_id")) != str(user_id):
+                continue
+            if session_id and str(session.get("_id")) != str(session_id):
+                continue
+            if session.get("token_hash") == token_hash:
+                session["revoked_at"] = now
+        _prune_expired_sessions(store)
+        _save_store(store)
+
+    return {"success": True}

@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
 from pydantic import BaseModel
+from routes.auth import get_authenticated_user
 
 router = APIRouter(prefix="/google-calendar", tags=["google-calendar"])
 
@@ -94,15 +95,7 @@ def require_google_config():
 
 
 def get_current_user(request: Request):
-    header = request.headers.get("authorization") or ""
-    token = header.replace("Bearer ", "", 1).strip() if header.startswith("Bearer ") else None
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing authorization token")
-
-    docs = couch_find({"type": "user", "token": token}, limit=1)
-    if not docs:
-        raise HTTPException(status_code=401, detail="Invalid session")
-    return docs[0]
+    return get_authenticated_user(request)
 
 
 def token_doc_id(user_id: str) -> str:
