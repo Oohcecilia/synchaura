@@ -1,19 +1,30 @@
 import { useState, useMemo, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { useAppData } from "@/lib/DataProvider";
 import { MapPin } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import TaskFormDialog from "../components/TaskFormDialog";
+import TaskDetailDialog from "../components/TaskDetailDialog";
 import "leaflet/dist/leaflet.css";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
-import { useAuth } from "@/lib/AuthContext";
 import { ensureLeafletDefaultIcons } from "@/lib/leaflet-icons";
 
 ensureLeafletDefaultIcons();
 
-export default function MapPage() {
-  const { user } = useAuth();
+function FocusTaskOnMap({ task }) {
+  const map = useMap();
 
+  useEffect(() => {
+    if (task?.latitude == null || task?.longitude == null) return;
+
+    const maxZoom = typeof map.getMaxZoom === "function" ? map.getMaxZoom() : 19;
+    map.setView([task.latitude, task.longitude], Number.isFinite(maxZoom) ? maxZoom : 19, { animate: true });
+  }, [map, task?.latitude, task?.longitude]);
+
+  return null;
+}
+
+export default function MapPage() {
   const {
     tasks,
     teams,
@@ -75,8 +86,9 @@ export default function MapPage() {
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 h-[500px] rounded-2xl overflow-hidden border">
-            <MapContainer center={center} zoom={12} className="h-full w-full">
+          <div className="relative z-0 lg:col-span-2 h-[500px] rounded-2xl overflow-hidden border">
+            <MapContainer center={center} zoom={12} className="h-full w-full relative z-0">
+              <FocusTaskOnMap task={selectedTask} />
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -109,7 +121,6 @@ export default function MapPage() {
                 key={task._id}
                 onClick={() => {
                   setSelectedTask(task);
-                  setShowForm(true);
                 }}
                 className="w-full text-left bg-card border rounded-xl p-3 hover:shadow-md transition-all"
               >
@@ -122,6 +133,23 @@ export default function MapPage() {
           </div>
         </div>
       )}
+
+      <TaskDetailDialog
+        open={!!selectedTask}
+        onOpenChange={(open) => {
+          if (!open) setSelectedTask(null);
+        }}
+        task={selectedTask}
+        members={members}
+        onEdit={(task) => {
+          setSelectedTask(task);
+          setShowForm(true);
+        }}
+        onDeleted={() => {
+          setSelectedTask(null);
+          reload();
+        }}
+      />
 
       <TaskFormDialog
         open={showForm}

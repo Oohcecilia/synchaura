@@ -24,16 +24,19 @@ import {
   differenceInCalendarYears,
 } from "date-fns";
 import TaskFormDialog from "../components/TaskFormDialog";
+import { getTaskDeadlineDate, parseTaskDate } from "@/lib/task-dates";
 
 const googleEventStart = (event) => event.start?.dateTime || event.start?.date;
 
-const getTaskStartDate = (task) => {
-  const value = task.due_date || task.next_due_date || task.start_date || task.created_at;
-  if (!value) return null;
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
+const getTaskStartDate = (task) =>
+  parseTaskDate(
+    task?.start_date ||
+      task?.start_time ||
+      task?.due_date ||
+      task?.next_due_date ||
+      task?.end_date ||
+      task?.created_at
+  );
 
 const toNumberArray = (value) => Array.isArray(value) ? value.map(Number).filter(Number.isFinite) : [];
 const intervalCount = (task) => Math.max(1, Number(task.recurring_interval_count) || 1);
@@ -134,10 +137,8 @@ export default function CalendarPage() {
             : [];
         }
 
-        if (!task.due_date) return [];
-
-        const due = new Date(task.due_date);
-        if (Number.isNaN(due.getTime())) return [];
+        const due = getTaskDeadlineDate(task);
+        if (!due) return [];
 
         return isSameDay(due, date)
           ? [createOccurrence(task, date)]
@@ -285,6 +286,11 @@ export default function CalendarPage() {
           setDetailTask(null);
           setEditTask(task);
           setShowForm(true);
+        }}
+        onDeleted={() => {
+          setDetailTask(null);
+          setShowForm(false);
+          reload();
         }}
       />
 

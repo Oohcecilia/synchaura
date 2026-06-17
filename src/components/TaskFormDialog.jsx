@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,11 @@ import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getDB } from "@/db/couch";
 import { nanoid } from "nanoid";
+import {
+  normalizeTaskDateRange,
+  formatTaskDateTimeLocal,
+  getLocalDateString,
+} from "@/lib/task-dates";
 
 const emptyForm = {
   title: "",
@@ -40,23 +46,11 @@ const emptyForm = {
   assigned_to: [],
   team_id: "",
   workspace_id: "",
+  due_alarm_enabled: true,
   location_name: "",
   latitude: null,
   longitude: null,
   estimated_hours: "",
-};
-
-const formatDateTimeLocal = (value) => {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 16);
-};
-
-const toIsoOrNull = (value) => {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
 const safeParseFloat = (value) => {
@@ -93,9 +87,9 @@ export default function TaskFormDialog({
       description: task.description || "",
       status: task.status || "upcoming",
       priority: task.priority || "medium",
-      due_date: formatDateTimeLocal(task.due_date),
-      start_date: formatDateTimeLocal(task.start_date || task.start_time),
-      end_date: formatDateTimeLocal(task.end_date || task.end_time),
+      due_date: formatTaskDateTimeLocal(task.due_date || task.end_date || task.next_due_date),
+      start_date: formatTaskDateTimeLocal(task.start_date || task.start_time),
+      end_date: formatTaskDateTimeLocal(task.end_date || task.end_time),
       recurring_interval: task.recurring_interval || "weekly",
       recurring_interval_count: task.recurring_interval_count || 1,
       recurring_days_of_week: task.recurring_days_of_week || [],
@@ -103,6 +97,7 @@ export default function TaskFormDialog({
       assigned_to: task.assigned_to || [],
       team_id: task.team_id || "",
       workspace_id: task.workspace_id || "",
+      due_alarm_enabled: task.due_alarm_enabled ?? true,
       location_name: task.location_name || "",
       latitude: task.latitude ?? null,
       longitude: task.longitude ?? null,
@@ -132,7 +127,7 @@ export default function TaskFormDialog({
       return;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateString();
     setForm((prev) => ({ ...prev, [field]: `${today}T${value}` }));
   };
 
@@ -145,12 +140,18 @@ export default function TaskFormDialog({
 
     try {
       const db = getDB(session.userId);
+      const normalizedDates = normalizeTaskDateRange({
+        startDate: form.start_date,
+        endDate: form.end_date,
+        dueDate: form.due_date,
+      });
 
       const data = {
         ...form,
-        due_date: toIsoOrNull(form.due_date),
-        start_date: toIsoOrNull(form.start_date),
-        end_date: toIsoOrNull(form.end_date),
+        due_alarm_enabled: form.due_alarm_enabled !== false,
+        due_date: normalizedDates.due_date,
+        start_date: normalizedDates.start_date,
+        end_date: normalizedDates.end_date,
         latitude: safeParseFloat(form.latitude),
         longitude: safeParseFloat(form.longitude),
         estimated_hours: safeParseFloat(form.estimated_hours),
@@ -158,8 +159,8 @@ export default function TaskFormDialog({
         recurring_days_of_week: form.recurring_days_of_week || [],
         recurring_days_of_month: form.recurring_days_of_month || [],
         next_due_date:
-          form.status === "recurring" && form.due_date
-            ? toIsoOrNull(form.due_date)
+          form.status === "recurring" && normalizedDates.due_date
+            ? normalizedDates.due_date
             : null,
       };
 
@@ -175,6 +176,7 @@ export default function TaskFormDialog({
         finalTaskDoc = {
           ...existingTask,
           ...data,
+          created_by: existingTask.created_by || session.userId,
           type: "task",
           updated_at: new Date().toISOString(),
         };
@@ -206,6 +208,7 @@ export default function TaskFormDialog({
         finalTaskDoc = {
           _id: `task_${nanoid()}`,
           type: "task",
+          created_by: session.userId,
           ...data,
           created_at: new Date().toISOString(),
         };
@@ -287,6 +290,21 @@ export default function TaskFormDialog({
                   <SelectItem value="high">High</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-muted/20 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-sm font-medium">Due date alarms</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Notify assignees when the task is due soon or overdue.
+                </p>
+              </div>
+              <Switch
+                checked={form.due_alarm_enabled !== false}
+                onCheckedChange={(checked) => setForm({ ...form, due_alarm_enabled: checked })}
+              />
             </div>
           </div>
 

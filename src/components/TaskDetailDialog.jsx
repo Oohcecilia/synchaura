@@ -1,8 +1,26 @@
 import { useState, useEffect, useRef } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Play, Square, Clock, Calendar, MapPin, Users, TrendingUp, Edit, Bot, FileText, MessageSquare } from "lucide-react";
+import {
+  Play,
+  Square,
+  Clock,
+  Calendar,
+  MapPin,
+  Users,
+  TrendingUp,
+  Edit,
+  Bot,
+  FileText,
+  MessageSquare,
+  Trash2,
+} from "lucide-react";
 import TaskThread from "@/components/TaskThread";
 import TaskAgents from "@/components/TaskAgents";
 import TaskReports from "@/components/TaskReports";
@@ -10,6 +28,18 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { getDB } from "@/db/couch";
+import { getTaskDeadlineDate } from "@/lib/task-dates";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle as AlertDialogTitlePrimitive,
+} from "@/components/ui/alert-dialog";
+import { canUserDeleteTask } from "@/lib/task-access";
 
 const priorityConfig = {
     high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -29,8 +59,15 @@ function formatDuration(totalSeconds) {
     ].filter(Boolean).join(":");
 }
 
-export default function TaskDetailDialog({ open, onOpenChange, task, members = [], onEdit }) {
-    const { user, session } = useAuth();
+export default function TaskDetailDialog({
+    open,
+    onOpenChange,
+    task,
+    members = [],
+    onEdit,
+    onDeleted,
+}) {
+    const { user, session, memberships, hasFullAccess } = useAuth();
     const [timeLogs, setTimeLogs] = useState([]);
     const [team, setTeam] = useState(null);
     const [assignee, setAssignee] = useState([]); 
@@ -42,6 +79,13 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
     const [agentCount, setAgentCount] = useState(0);
     
     const intervalRef = useRef(null);
+    const userId = user?.id || user?._id || session?.userId;
+    const canDelete = canUserDeleteTask({
+        userId,
+        task,
+        memberships,
+        hasFullAccess,
+    });
 
     // ==========================================
     // 1. FUNCTION DECLARATIONS (Moved UP to avoid TDZ)
@@ -138,6 +182,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
             await db.remove(fresh);
             setDeleteOpen(false);
             onOpenChange(false);
+            onDeleted?.(task);
         } catch (err) {
             console.error("Delete task document failed:", err);
         }
@@ -213,19 +258,39 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
     const efficiency = task.estimated_hours && parseFloat(totalLoggedHours) > 0
         ? Math.round((task.estimated_hours / parseFloat(totalLoggedHours)) * 100)
         : null;
+    const deadlineDate = getTaskDeadlineDate(task);
 
     return (
         <Dialog open={open} onOpenChange={(v) => { if (!v) stopTimer(false); onOpenChange(v); }}>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <div className="flex items-start justify-between gap-2 mr-4">
-                        <DialogTitle className="text-base leading-snug pr-2">{task.title}</DialogTitle>
-                        <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); onEdit?.(task); }}>
-                            <Edit className="h-3.5 w-3.5 mr-1" /> Edit
-                        </Button>
+            <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] overflow-hidden p-4 sm:w-full sm:max-w-lg sm:max-h-[90vh] sm:p-6">
+                <div className="flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-hidden sm:max-h-[calc(90vh-3rem)]">
+                <DialogHeader className="text-left sm:text-left">
+                    <div className="flex items-start justify-between gap-3 pr-8 sm:pr-4">
+                        <DialogTitle className="text-lg sm:text-base leading-snug">{task.title}</DialogTitle>
+                        <div className="flex shrink-0 items-center gap-2">
+                            {canDelete && (
+                                <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => setDeleteOpen(true)}
+                                    className="h-8 px-3"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                                </Button>
+                            )}
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { onOpenChange(false); onEdit?.(task); }}
+                                className="h-8 px-3"
+                            >
+                                <Edit className="h-3.5 w-3.5 mr-1" /> Edit
+                            </Button>
+                        </div>
                     </div>
                 </DialogHeader>
 
+                <div className="flex-1 overflow-y-auto pr-1 space-y-4">
                 {/* Badges */}
                 <div className="flex flex-wrap gap-2">
                     <span className={cn("text-[11px] font-semibold px-2.5 py-1 rounded-full capitalize", priorityConfig[task.priority] || priorityConfig.medium)}>
@@ -234,9 +299,9 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
                     <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground capitalize">
                         {task.status}
                     </span>
-                    {task.due_date && (
+                    {deadlineDate && (
                         <span className="flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2.5 py-1">
-                            <Calendar className="h-3 w-3" /> {format(new Date(task.due_date), "MMM d, yyyy")}
+                            <Calendar className="h-3 w-3" /> {format(deadlineDate, "MMM d, yyyy")}
                         </span>
                     )}
                     {agentCount > 0 && (
@@ -247,7 +312,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
                 </div>
 
                 <Tabs defaultValue="overview" className="w-full">
-                    <TabsList className="bg-muted/50 rounded-xl p-1 w-full">
+                    <TabsList className="bg-muted/50 rounded-xl p-1 w-full flex-wrap">
                         <TabsTrigger value="overview" className="rounded-lg text-xs flex-1">Overview</TabsTrigger>
                         <TabsTrigger value="agents" className="rounded-lg text-xs flex-1 flex items-center gap-1">
                             <Bot className="h-3 w-3" /> Agents
@@ -282,7 +347,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
                                 <TrendingUp className="h-3.5 w-3.5" /> Time Tracking
                             </h4>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div className="text-center">
                                     <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Estimated</p>
                                     <p className="text-lg font-bold mt-0.5">{task.estimated_hours ?? "—"}<span className="text-xs font-normal text-muted-foreground ml-0.5">h</span></p>
@@ -300,7 +365,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3 pt-1">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
                                 {running ? (
                                     <>
                                         <div className="flex-1 font-mono text-sm font-semibold text-primary">{formatDuration(elapsed)}</div>
@@ -370,6 +435,25 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members = [
                         <TaskThread task={task} members={members} />
                     </TabsContent>
                 </Tabs>
+                </div>
+                </div>
+
+                <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitlePrimitive>Delete task?</AlertDialogTitlePrimitive>
+                            <AlertDialogDescription>
+                                This will permanently remove "{task.title}" from the local database and sync target.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Delete
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </DialogContent>
         </Dialog>
     );

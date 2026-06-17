@@ -1,18 +1,10 @@
-import { useState } from "react";
 import { Menu } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { cn } from "@/lib/utils";
-import logo_dark from "@/assets/logo_dark.png";
-import logo_light from "@/assets/logo_light.png";
+import ThemeLogo from "@/components/ThemeLogo";
 
 
 export default function MobileNav({ onMenuClick }) {
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem("theme");
-    return saved ? saved === "dark" : false;
-  });
-    
-
   return (
     <div className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card">
       <button
@@ -27,11 +19,7 @@ export default function MobileNav({ onMenuClick }) {
             "flex items-center p-1 rounded transition-colors"
           )}
         >
-          <img
-            src={darkMode ? logo_dark : logo_light}
-            alt="Synchaura"
-            className="h-10 w-auto object-contain"
-          />
+          <ThemeLogo className="h-10 w-auto object-contain" />
         </div>
 
       </div>

@@ -42,9 +42,7 @@ export default function Settings() {
   }, [user]);
 
   const toggleTheme = (checked) => {
-    setDarkMode(checked);
-    document.documentElement.classList.toggle("dark", checked);
-    localStorage.setItem("theme", checked ? "dark" : "light");
+    setDarkMode(applyTheme(checked ? "dark" : "light"));
   };
 
   const userName = useMemo(

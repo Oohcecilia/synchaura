@@ -184,10 +184,11 @@ export default function LocationPicker({ value, onChange }) {
         )}
       </div>
 
-      <div className="rounded-xl overflow-hidden border h-52">
+      <div className="relative z-0 rounded-xl overflow-hidden border h-52">
         <MapContainer
           center={center}
           zoom={zoom}
+          className="h-full w-full relative z-0"
           style={{ height: "100%", width: "100%" }}
           scrollWheelZoom={false}
         >

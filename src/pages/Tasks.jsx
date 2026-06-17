@@ -83,7 +83,7 @@ export default function Tasks() {
           }}
           className="rounded-xl shadow-lg shadow-primary/25 text-sm"
         >
-          What's on you mind?
+          What's on your mind?
         </Button>
       </div>
 
@@ -142,6 +142,10 @@ export default function Tasks() {
           setDetailTask(null);
           setEditTask(t);
           setShowForm(true);
+        }}
+        onDeleted={() => {
+          setDetailTask(null);
+          reload();
         }}
       />
 

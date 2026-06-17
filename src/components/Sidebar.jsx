@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import React, { useState } from "react";
+import React from "react";
 import {
   LayoutDashboard,
   CheckSquare,
@@ -16,9 +16,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import { useAppData } from "@/lib/DataProvider";
-
-import logo_dark from "@/assets/logo_dark.png";
-import logo_light from "@/assets/logo_light.png";
+import ThemeLogo from "@/components/ThemeLogo";
+import { version as appVersion } from "../../package.json";
 
 // =========================
 // NAV ITEMS WITH ROLES
@@ -60,11 +59,6 @@ export default function Sidebar({ onClose }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, memberships } = useAuth();
-
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem("theme");
-    return saved ? saved === "dark" : false;
-  });
   
 
 
@@ -100,11 +94,7 @@ export default function Sidebar({ onClose }) {
                 "flex items-center p-1 rounded transition-colors"
               )}
             >
-              <img
-                src={darkMode ? logo_dark : logo_light}
-                alt="Synchaura"
-                className="h-12 w-auto object-contain"
-              />
+              <ThemeLogo className="h-12 w-auto object-contain" />
             </div>
         </div>
 
@@ -152,13 +142,18 @@ export default function Sidebar({ onClose }) {
 
       {/* Logout */}
       <div className="p-3 border-t border-border">
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all w-full"
-        >
-          <LogOut className="h-[18px] w-[18px]" />
-          Sign Out
-        </button>
+        <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors">
+          <button
+            onClick={handleLogout}
+            className="flex min-w-0 flex-1 items-center gap-3 text-sm font-medium text-muted-foreground hover:text-destructive transition-colors"
+          >
+            <LogOut className="h-[18px] w-[18px] shrink-0" />
+            <span>Sign Out</span>
+          </button>
+          <span className="shrink-0 text-[11px] font-medium tracking-wide text-muted-foreground/80">
+            v{appVersion}
+          </span>
+        </div>
       </div>
     </div>
   );

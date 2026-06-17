@@ -1,5 +1,7 @@
 import { nanoid } from "nanoid";
 import { getDB } from "@/db/couch";
+import { getTaskDeadlineDate } from "@/lib/task-dates";
+import { userCanAccessTask } from "@/lib/task-access";
 
 const DUE_SOON_WINDOW_MS = 48 * 60 * 60 * 1000;
 
@@ -10,46 +12,8 @@ const toIdSet = (values = []) =>
       .map((value) => String(value))
   );
 
-const getUserId = (user) => {
-  if (!user) return null;
-  if (typeof user === "string") return user;
-  return user.userId || user.id || user._id || user.user?.id || user.user?._id || null;
-};
-
-const getTaskTeamIds = (task) => {
-  if (!task) return [];
-  if (Array.isArray(task.team_id)) return task.team_id.filter(Boolean).map(String);
-  if (Array.isArray(task.team_ids)) return task.team_ids.filter(Boolean).map(String);
-  return [task.team_id].filter(Boolean).map(String);
-};
-
 export const isTaskCompleted = (task) =>
   ["completed", "done", "cancelled", "archived"].includes(String(task?.status || "").toLowerCase());
-
-export const userCanAccessTask = (userId, task, memberships = []) => {
-  if (!userId || !task) return false;
-
-  const normalizedUserId = String(userId);
-  const assignedIds = toIdSet(Array.isArray(task.assigned_to) ? task.assigned_to : []);
-  if (assignedIds.has(normalizedUserId)) return true;
-
-  const membership = memberships.find(
-    (entry) =>
-      String(entry?.user_id) === normalizedUserId &&
-      String(entry?.workspace_id) === String(task.workspace_id)
-  );
-
-  if (!membership) return false;
-
-  const role = String(membership.role || "member").toLowerCase();
-  if (role === "owner" || role === "admin") return true;
-
-  const taskTeamIds = getTaskTeamIds(task);
-  if (!taskTeamIds.length) return false;
-
-  const userTeamIds = toIdSet(Array.isArray(membership.team_ids) ? membership.team_ids : []);
-  return taskTeamIds.some((teamId) => userTeamIds.has(String(teamId)));
-};
 
 export const isNotificationVisibleToUser = ({
   notification,
@@ -69,6 +33,17 @@ export const isNotificationVisibleToUser = ({
 
   if (notification.task_id) {
     const task = taskById.get(String(notification.task_id));
+    if (!task) return false;
+
+    const category = String(notification.category || "");
+    if ((category === "task_due_soon" || category === "task_overdue") && task.due_alarm_enabled === false) {
+      return false;
+    }
+
+    if ((category === "task_due_soon" || category === "task_overdue") && isTaskCompleted(task)) {
+      return false;
+    }
+
     return userCanAccessTask(normalizedUserId, task, memberships);
   }
 
@@ -76,10 +51,10 @@ export const isNotificationVisibleToUser = ({
 };
 
 function getDueState(task, now = new Date()) {
-  if (!task?.due_date || isTaskCompleted(task)) return null;
+  if (task?.due_alarm_enabled === false || isTaskCompleted(task)) return null;
 
-  const due = new Date(task.due_date);
-  if (Number.isNaN(due.getTime())) return null;
+  const due = getTaskDeadlineDate(task);
+  if (!due) return null;
 
   const msUntilDue = due.getTime() - now.getTime();
   if (msUntilDue < 0) return "task_overdue";
@@ -127,8 +102,8 @@ export async function ensureDueTaskNotifications(db, userId, tasks = [], members
     const category = getDueState(task, now);
     if (!category) continue;
 
-    const notificationId = `notif_${category}_${task._id}_${userId}`;
-    const due = new Date(task.due_date);
+    const notificationId = `notif_task_due_${task._id}_${userId}`;
+    const due = getTaskDeadlineDate(task);
     const existing = existingById.get(notificationId);
     const notification = {
       ...(existing || {}),

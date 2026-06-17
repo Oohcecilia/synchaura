@@ -110,14 +110,32 @@ export default function NotificationBell({ position = "right" }) {
     load();
   }, "notification");
 
+  usePouchChanges(userId, (doc) => {
+    if (!doc || doc.type !== "task") return;
+    load();
+  }, "task");
+
   useEffect(() => {
     load();
 
     const handler = () => load();
     window.addEventListener("notifications:changed", handler);
+    window.addEventListener("focus", handler);
+    const interval = window.setInterval(() => {
+      load();
+    }, 60 * 1000);
+    const visibilityHandler = () => {
+      if (document.visibilityState === "visible") {
+        load();
+      }
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
 
     return () => {
       window.removeEventListener("notifications:changed", handler);
+      window.removeEventListener("focus", handler);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", visibilityHandler);
     };
   }, [load]);
 

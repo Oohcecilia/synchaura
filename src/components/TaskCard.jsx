@@ -5,6 +5,7 @@ import { format, isPast, isToday, differenceInHours } from "date-fns";
 import { getDB } from "@/db/couch";
 import { createNotification } from "@/db/notification";
 import { useAuth } from "@/lib/AuthContext";
+import { getTaskDeadlineDate } from "@/lib/task-dates";
 
 
 const priorityConfig = {
@@ -22,33 +23,28 @@ const statusConfig = {
 };
 
 
-function getDeadlineUrgency(due_date, status, end_time) {
+function getDeadlineUrgency(dueDate, status) {
 
   if (status === "completed") return null;
 
   const now = new Date();
-  const due = new Date(due_date);
+  if (!dueDate) return null;
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return null;
 
   // -----------------------------
   // 1. OVERDUE (date already passed)
   // -----------------------------
-  if (due_date && isPast(due) && !isToday(due)) {
+  if (isPast(due) && !isToday(due)) {
     return "overdue";
   }
 
   // -----------------------------
-  // 2. TODAY LOGIC (includes end_time)
+  // 2. TODAY LOGIC
   // -----------------------------
   if (isToday(due)) {
-    if (!end_time) return "today";
-
-    const [h, m] = end_time.split(":").map(Number);
-
-    const endDateTime = new Date(due);
-    endDateTime.setHours(h, m, 0, 0);
-
-    if (now > endDateTime) return "overdue";
-    if (differenceInHours(endDateTime, now) <= 2) return "urgent";
+    if (now > due) return "overdue";
+    if (differenceInHours(due, now) <= 2) return "soon";
 
     return "today";
   }
@@ -83,7 +79,8 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
     .map((id) => members?.find((m) => m.id === id))
     .filter(Boolean);
 
-  const urgency = getDeadlineUrgency(task.due_date, task.status, task.end_date);
+  const deadlineDate = getTaskDeadlineDate(task);
+  const urgency = getDeadlineUrgency(deadlineDate, task.status);
   const isCompleted = task.status === "completed";
 
   const urgencyBorder = {
@@ -188,7 +185,7 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
           {status.label}
         </span>
 
-        {task.due_date && (
+        {deadlineDate && (
           <div className={cn(
             "flex items-center gap-1 text-xs",
             urgency === "overdue" && "text-red-600 font-medium",
@@ -197,7 +194,7 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
             !urgency && "text-muted-foreground"
           )}>
             {urgency === "today" ? <Clock className="h-3 w-3" /> : <Calendar className="h-3 w-3" />}
-            {format(new Date(task.due_date), "MMM d")}
+            {format(deadlineDate, "MMM d")}
             {urgency === "overdue" && <span className="ml-0.5">· Overdue</span>}
             {urgency === "today" && <span className="ml-0.5">· Due today</span>}
             {urgency === "soon" && <span className="ml-0.5">· Due soon</span>}
@@ -262,5 +259,3 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
     </div>
   );
 }
-
-
