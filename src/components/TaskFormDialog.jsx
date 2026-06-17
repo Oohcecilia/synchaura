@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom";
 import { getDB } from "@/db/couch";
 import { nanoid } from "nanoid";
 import {
-  normalizeTaskDateRange,
+  normalizeTaskCreationDateRange,
   formatTaskDateTimeLocal,
   getLocalDateString,
 } from "@/lib/task-dates";
@@ -140,7 +140,8 @@ export default function TaskFormDialog({
 
     try {
       const db = getDB(session.userId);
-      const normalizedDates = normalizeTaskDateRange({
+      const normalizedDates = normalizeTaskCreationDateRange({
+        status: form.status,
         startDate: form.start_date,
         endDate: form.end_date,
         dueDate: form.due_date,
@@ -158,10 +159,7 @@ export default function TaskFormDialog({
         recurring_interval_count: parseInt(form.recurring_interval_count, 10) || 1,
         recurring_days_of_week: form.recurring_days_of_week || [],
         recurring_days_of_month: form.recurring_days_of_month || [],
-        next_due_date:
-          form.status === "recurring" && normalizedDates.due_date
-            ? normalizedDates.due_date
-            : null,
+        next_due_date: normalizedDates.next_due_date,
       };
 
       let finalTaskDoc;

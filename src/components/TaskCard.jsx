@@ -213,9 +213,9 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
         <div className="flex items-center gap-1 mt-2 text-[10px] font-medium text-purple-600 dark:text-purple-400">
           <RefreshCw className="h-3 w-3" />
           {intervalLabel(task)}
-          {task.next_due_date && (
+          {deadlineDate && (
             <span className="text-muted-foreground font-normal ml-1">
-              · next {format(new Date(task.next_due_date), "MMM d")}
+              · next {format(deadlineDate, "MMM d")}
             </span>
           )}
         </div>

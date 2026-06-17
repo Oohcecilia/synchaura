@@ -123,7 +123,7 @@ export default function Dashboard() {
   // UI
   // -----------------------------
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
+    <div className="-mt-4 max-w-7xl mx-auto space-y-8 md:mt-0">
       {/* Header */}
       <div className="sticky top-0 z-20 -mx-4 border-b border-border/0 bg-background/95 px-4 py-3 backdrop-blur-sm sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

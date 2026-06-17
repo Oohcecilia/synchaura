@@ -18,68 +18,11 @@ import {
   isSameMonth,
   isSameDay,
   isToday,
-  differenceInCalendarDays,
-  differenceInCalendarWeeks,
-  differenceInCalendarMonths,
-  differenceInCalendarYears,
 } from "date-fns";
 import TaskFormDialog from "../components/TaskFormDialog";
-import { getTaskDeadlineDate, parseTaskDate } from "@/lib/task-dates";
+import { getTaskDeadlineDate, isRecurringTaskOnDate } from "@/lib/task-dates";
 
 const googleEventStart = (event) => event.start?.dateTime || event.start?.date;
-
-const getTaskStartDate = (task) =>
-  parseTaskDate(
-    task?.start_date ||
-      task?.start_time ||
-      task?.due_date ||
-      task?.next_due_date ||
-      task?.end_date ||
-      task?.created_at
-  );
-
-const toNumberArray = (value) => Array.isArray(value) ? value.map(Number).filter(Number.isFinite) : [];
-const intervalCount = (task) => Math.max(1, Number(task.recurring_interval_count) || 1);
-
-const isRecurringTaskOnDate = (task, date) => {
-  if (task.status !== "recurring") return false;
-
-  const startDate = getTaskStartDate(task);
-  if (!startDate) return false;
-
-  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const recurrenceStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-
-  if (dayStart < recurrenceStart) return false;
-
-  const count = intervalCount(task);
-  const interval = task.recurring_interval || "weekly";
-  const daysOfWeek = toNumberArray(task.recurring_days_of_week);
-  const daysOfMonth = toNumberArray(task.recurring_days_of_month);
-
-  if (interval === "daily") return differenceInCalendarDays(dayStart, recurrenceStart) % count === 0;
-
-  if (interval === "weekly") {
-    const weekMatches = differenceInCalendarWeeks(dayStart, recurrenceStart, { weekStartsOn: 1 }) % count === 0;
-    const selectedDays = daysOfWeek.length ? daysOfWeek : [recurrenceStart.getDay()];
-    return weekMatches && selectedDays.includes(dayStart.getDay());
-  }
-
-  if (interval === "monthly") {
-    const monthMatches = differenceInCalendarMonths(dayStart, recurrenceStart) % count === 0;
-    const selectedDates = daysOfMonth.length ? daysOfMonth : [recurrenceStart.getDate()];
-    return monthMatches && selectedDates.includes(dayStart.getDate());
-  }
-
-  if (interval === "yearly") {
-    const yearMatches = differenceInCalendarYears(dayStart, recurrenceStart) % count === 0;
-    const selectedMonths = daysOfWeek.length ? daysOfWeek : [recurrenceStart.getMonth() + 1];
-    const selectedDates = daysOfMonth.length ? daysOfMonth : [recurrenceStart.getDate()];
-    return yearMatches && selectedMonths.includes(dayStart.getMonth() + 1) && selectedDates.includes(dayStart.getDate());
-  }
-
-  return false;
-};
 
 const createOccurrence = (task, date) => ({
   ...task,
