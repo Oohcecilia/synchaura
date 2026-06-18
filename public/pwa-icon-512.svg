@@ -2,10 +2,7 @@
   <title>Synchaura</title>
   <desc>Local-first workspace icon with sync nodes.</desc>
   <defs>
-    <linearGradient id="bg" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#173126"/>
-      <stop offset="1" stop-color="#35664a"/>
-    </linearGradient>
+        <linearGradient id="bg" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse"> <stop stop-color="#020817"/> <stop offset="1" stop-color="#0c182e"/> </linearGradient>
     <linearGradient id="accent" x1="96" y1="112" x2="416" y2="400" gradientUnits="userSpaceOnUse">
       <stop stop-color="#f7d06a"/>
       <stop offset="1" stop-color="#ffffff"/>
