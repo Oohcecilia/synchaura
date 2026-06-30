@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routes.auth import router as auth_router
 from routes.couch_proxy import router as couch_proxy_router
 from routes.google_calendar import router as google_calendar_router
+from routes.geolocation import router as geolocation_router
 
 app = FastAPI()
 
@@ -41,3 +42,16 @@ app.include_router(couch_proxy_router)
 app.include_router(couch_proxy_router, prefix="/api")
 app.include_router(google_calendar_router)
 app.include_router(google_calendar_router, prefix="/api")
+app.include_router(geolocation_router)
+
+
+@app.get("/api")
+@app.get("/api/")
+def api_root():
+    return {"ok": True}
+
+
+@app.head("/api")
+@app.head("/api/")
+def api_root_head():
+    return {"ok": True}

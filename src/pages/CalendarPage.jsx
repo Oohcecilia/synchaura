@@ -38,6 +38,7 @@ export default function CalendarPage() {
     members,
     workspaces,
     loading,
+    reload,
   } = useAppData();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());

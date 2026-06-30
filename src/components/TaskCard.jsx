@@ -1,4 +1,5 @@
-import { Calendar, MapPin, Users, CheckCircle2, Clock, RefreshCw, RotateCcw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Calendar, MapPin, Users, CheckCircle2, Clock, RefreshCw, RotateCcw, Navigation } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, isPast, isToday, differenceInHours } from "date-fns";
 
@@ -70,6 +71,8 @@ const intervalLabel = (task) => {
 
 
 export default function TaskCard({ task, members, onClick, onComplete, onReopen }) {
+
+  const navigate = useNavigate();
 
   const { user, session } = useAuth();
   const userId = user?.id || user?._id || session?.userId;
@@ -205,6 +208,18 @@ export default function TaskCard({ task, members, onClick, onComplete, onReopen 
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3" />
             <span className="truncate max-w-[80px]">{task.location_name}</span>
+            {task.latitude != null && task.longitude != null && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate("/map", { state: { task } });
+                }}
+                title="Navigate to task"
+                className="ml-0.5 p-0.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
+              >
+                <Navigation className="h-3 w-3" />
+              </button>
+            )}
           </div>
         )}
       </div>

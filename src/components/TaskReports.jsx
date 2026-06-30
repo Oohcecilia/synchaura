@@ -7,6 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Loader2, FileText, X, Check, Pencil, Trash2, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { useAuth } from "@/lib/AuthContext";
+import { getDB } from "@/db/couch";
+import { nanoid } from "nanoid";
 
 const statusConfig = {
   draft:        { label: "Draft",        cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" },
@@ -29,15 +32,34 @@ export default function TaskReports({ task, agents }) {
   const [filterStatus, setFilterStatus] = useState("all");
   const [expandedId, setExpandedId] = useState(null);
 
+  const { session } = useAuth();
+
   const load = async () => {
+    if (!task?._id || !session?.userId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-    const data = [];
-    // const data = await base44.entities.AgentReport.filter({ task_id: task.id }, "-created_date");
-    setReports(data);
-    setLoading(false);
+
+    try {
+      const db = getDB(session.userId);
+      const result = await db.find({
+        selector: { type: "report", task_id: task._id },
+      });
+      const data = (result.docs || []).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+      setReports(data);
+    } catch (err) {
+      console.error("Failed to load reports:", err);
+      setReports([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, [task.id]);
+  useEffect(() => { load(); }, [task._id, session?.userId]);
 
   const openAdd = () => { setEditingReport(null); setForm(EMPTY_FORM); setShowForm(true); };
   const openEdit = (r) => {
@@ -48,34 +70,75 @@ export default function TaskReports({ task, agents }) {
   const cancel = () => { setShowForm(false); setEditingReport(null); setForm(EMPTY_FORM); };
 
   const handleSave = async () => {
-    if (!form.title.trim()) return;
+    if (!form.title.trim() || !session?.userId || !task?._id) return;
     setSaving(true);
-    // const payload = {
-    //   ...form,
-    //   task_id: task.id,
-    //   submission_date: form.status === "submitted" ? new Date().toISOString() : (editingReport?.submission_date || null),
-    // };
-    // if (editingReport) {
-    //   await base44.entities.AgentReport.update(editingReport.id, payload);
-    // } else {
-    //   await base44.entities.AgentReport.create(payload);
-    // }
-    setSaving(false);
-    cancel();
-    load();
+
+    const db = getDB(session.userId);
+
+    try {
+      const now = new Date().toISOString();
+
+      if (editingReport?._id) {
+        const existing = await db.get(editingReport._id);
+        await db.put({
+          ...existing,
+          ...form,
+          type: "report",
+          submission_date: form.status === "submitted" ? now : (editingReport.submission_date || null),
+          updated_at: now,
+        });
+      } else {
+        await db.put({
+          _id: `report_${nanoid()}`,
+          type: "report",
+          task_id: task._id,
+          ...form,
+          submission_date: form.status === "submitted" ? now : null,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+
+      cancel();
+      load();
+    } catch (err) {
+      console.error("Save report error:", err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (r) => {
-    // await base44.entities.AgentReport.delete(r.id);
-    load();
+    if (!session?.userId || !r._id) return;
+
+    const db = getDB(session.userId);
+
+    try {
+      const fresh = await db.get(r._id);
+      await db.remove(fresh);
+      load();
+    } catch (err) {
+      console.error("Delete report error:", err);
+    }
   };
 
   const updateStatus = async (r, newStatus) => {
-    // await base44.entities.AgentReport.update(r.id, {
-    //   status: newStatus,
-    //   submission_date: newStatus === "submitted" ? new Date().toISOString() : r.submission_date,
-    // });
-    load();
+    if (!session?.userId || !r._id) return;
+
+    const db = getDB(session.userId);
+
+    try {
+      const fresh = await db.get(r._id);
+      await db.put({
+        ...fresh,
+        status: newStatus,
+        submission_date: newStatus === "submitted" ? new Date().toISOString() : r.submission_date,
+        updated_at: new Date().toISOString(),
+      });
+      load();
+    } catch (err) {
+      console.error("Update report status error:", err);
+    }
   };
 
   const filtered = reports.filter((r) => {

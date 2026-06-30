@@ -5,6 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, Loader2, Bot, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/AuthContext";
+import { getDB } from "@/db/couch";
+import { nanoid } from "nanoid";
 
 const roleColors = {
   analyst: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -30,16 +33,33 @@ export default function TaskAgents({ task, onAgentCountChange }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  const { session } = useAuth();
+
   const load = async () => {
+    if (!task?._id || !session?.userId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-    const data = [];
-    // const data = await base44.entities.Agent.filter({ task_id: task.id }, "name");
-    setAgents(data);
-    onAgentCountChange?.(data.length);
-    setLoading(false);
+
+    try {
+      const db = getDB(session.userId);
+      const result = await db.find({
+        selector: { type: "agent", task_id: task._id },
+      });
+      const data = result.docs || [];
+      setAgents(data);
+      onAgentCountChange?.(data.length);
+    } catch (err) {
+      console.error("Failed to load agents:", err);
+      setAgents([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, [task.id]);
+  useEffect(() => { load(); }, [task._id, session?.userId]);
 
   const openAdd = () => { setEditingAgent(null); setForm(EMPTY_FORM); setShowForm(true); };
   const openEdit = (agent) => {
@@ -50,27 +70,73 @@ export default function TaskAgents({ task, onAgentCountChange }) {
   const cancel = () => { setShowForm(false); setEditingAgent(null); setForm(EMPTY_FORM); };
 
   const handleSave = async () => {
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || !session?.userId || !task?._id) return;
     setSaving(true);
-    // if (editingAgent) {
-    //   await base44.entities.Agent.update(editingAgent.id, form);
-    // } else {
-    //   await base44.entities.Agent.create({ ...form, task_id: task.id });
-    // }
-    setSaving(false);
-    cancel();
-    load();
+
+    const db = getDB(session.userId);
+
+    try {
+      const now = new Date().toISOString();
+
+      if (editingAgent?._id) {
+        const existing = await db.get(editingAgent._id);
+        await db.put({
+          ...existing,
+          ...form,
+          type: "agent",
+          updated_at: now,
+        });
+      } else {
+        await db.put({
+          _id: `agent_${nanoid()}`,
+          type: "agent",
+          task_id: task._id,
+          ...form,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+
+      cancel();
+      load();
+    } catch (err) {
+      console.error("Save agent error:", err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (agent) => {
-    // await base44.entities.Agent.delete(agent.id);
-    load();
+    if (!session?.userId || !agent._id) return;
+
+    const db = getDB(session.userId);
+
+    try {
+      const fresh = await db.get(agent._id);
+      await db.remove(fresh);
+      load();
+    } catch (err) {
+      console.error("Delete agent error:", err);
+    }
   };
 
   const toggleStatus = async (agent) => {
+    if (!session?.userId || !agent._id) return;
+
     const next = agent.status === "active" ? "inactive" : "active";
-    // await base44.entities.Agent.update(agent.id, { status: next });
-    load();
+    const db = getDB(session.userId);
+
+    try {
+      const fresh = await db.get(agent._id);
+      await db.put({
+        ...fresh,
+        status: next,
+        updated_at: new Date().toISOString(),
+      });
+      load();
+    } catch (err) {
+      console.error("Toggle agent status error:", err);
+    }
   };
 
   return (

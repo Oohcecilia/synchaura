@@ -4,13 +4,8 @@ import PouchDBFind from "pouchdb-find";
 PouchDB.plugin(PouchDBFind);
 
 let databases = {};
-let initializedIndexes = new Set();
 
-async function ensureIndexes(db, userId) {
-  if (initializedIndexes.has(userId)) return;
-
-  initializedIndexes.add(userId);
-
+async function ensureIndexes(db) {
   try {
     await db.createIndex({
       index: {
@@ -32,6 +27,13 @@ async function ensureIndexes(db, userId) {
         name: "idx_type_user",
       },
     });
+
+    await db.createIndex({
+      index: {
+        fields: ["type", "task_id"],
+        name: "idx_type_task",
+      },
+    });
   } catch (err) {
     console.warn("Index creation failed:", err);
   }
@@ -47,7 +49,7 @@ export function getDB(userId) {
     if (typeof databases[userId].setMaxListeners === "function") {
       databases[userId].setMaxListeners(50);
     }
-    databases[userId].__synchauraIndexReady = ensureIndexes(databases[userId], userId);
+    databases[userId].__synchauraIndexReady = ensureIndexes(databases[userId]);
   }
 
   return databases[userId];
@@ -101,7 +103,6 @@ export async function closeLocalDB(userId) {
 
   await databases[userId].close();
   delete databases[userId];
-  initializedIndexes.delete(userId);
 }
 
 export async function destroyLocalDB(userId) {
@@ -110,7 +111,6 @@ export async function destroyLocalDB(userId) {
   const db = getDB(userId);
   await db.destroy();
   delete databases[userId];
-  initializedIndexes.delete(userId);
 }
 
 export function resetLocalDB(userId) {

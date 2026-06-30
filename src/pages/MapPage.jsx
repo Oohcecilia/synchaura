@@ -1,10 +1,17 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { useAppData } from "@/lib/DataProvider";
 import { MapPin } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import TaskFormDialog from "../components/TaskFormDialog";
 import TaskDetailDialog from "../components/TaskDetailDialog";
+import TaskRoute from "../components/TaskRoute";
+import UserLocationMarker from "../components/UserLocationMarker";
+import LocateMeButton from "../components/LocateMeButton";
+import LocationPermissionBanner from "../components/LocationPermissionBanner";
+import useGeolocation from "../hooks/useGeolocation";
+import useRoute from "../hooks/useRoute";
 import "leaflet/dist/leaflet.css";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
 import { ensureLeafletDefaultIcons } from "@/lib/leaflet-icons";
@@ -24,7 +31,25 @@ function FocusTaskOnMap({ task }) {
   return null;
 }
 
+/**
+ * Inner component that bridges imperative Leaflet map access
+ * with the LocateMeButton component.
+ */
+function LocateMeInner({ onClick, loading, disabled }) {
+  const map = useMap();
+
+  const handleClick = useCallback(() => {
+    if (onClick) onClick(map);
+  }, [map, onClick]);
+
+  return (
+    <LocateMeButton onClick={handleClick} loading={loading} disabled={disabled} />
+  );
+}
+
 export default function MapPage() {
+  const location = useLocation();
+
   const {
     tasks,
     teams,
@@ -34,13 +59,55 @@ export default function MapPage() {
     reload,
   } = useAppData();
 
-  const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(
+    // Restore task passed via router state from TaskDetailDialog's Navigate button
+    location.state?.task ?? null
+  );
   const [showForm, setShowForm] = useState(false);
+
+  const {
+    position: userPosition,
+    loading: geoLoading,
+    permissionState,
+    refreshLocation,
+  } = useGeolocation();
+
+  const {
+    route,
+    distance,
+    duration,
+    loading: routeLoading,
+    error: routeError,
+    fetchRoute,
+    clearRoute,
+  } = useRoute();
 
   useEffect(() => {
     const theme = getSavedTheme();
     applyTheme(theme);
   }, []);
+
+  // Auto-fetch route when a task is selected and user position is available
+  useEffect(() => {
+    if (selectedTask && userPosition) {
+      fetchRoute(userPosition, {
+        lat: selectedTask.latitude,
+        lng: selectedTask.longitude,
+      });
+    } else if (!selectedTask) {
+      clearRoute();
+    }
+  }, [selectedTask, userPosition, fetchRoute, clearRoute]);
+
+  const handleLocateMe = useCallback(
+    (map) => {
+      refreshLocation();
+      if (userPosition) {
+        map.flyTo([userPosition.lat, userPosition.lng], 14, { duration: 1 });
+      }
+    },
+    [refreshLocation, userPosition]
+  );
 
   const tasksWithLocation = useMemo(() => {
     return (tasks || []).filter(
@@ -87,8 +154,31 @@ export default function MapPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="relative z-0 lg:col-span-2 h-[500px] rounded-2xl overflow-hidden border">
+            {/* Permission banner — positioned over the map */}
+            <LocationPermissionBanner permissionState={permissionState} />
+
             <MapContainer center={center} zoom={12} className="h-full w-full relative z-0">
               <FocusTaskOnMap task={selectedTask} />
+
+              {/* User's current location marker */}
+              {userPosition && <UserLocationMarker position={userPosition} flyTo={true} />}
+
+              {/* Navigation route polyline */}
+              <TaskRoute
+                route={route}
+                distance={distance}
+                duration={duration}
+                loading={routeLoading}
+                error={routeError}
+              />
+
+              {/* Locate me button — rendered inside MapContainer for map access */}
+              <LocateMeInner
+                onClick={handleLocateMe}
+                loading={geoLoading}
+                disabled={permissionState === "denied"}
+              />
+
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -108,6 +198,12 @@ export default function MapPage() {
                       {task.location_name && (
                         <p className="text-xs text-muted-foreground">{task.location_name}</p>
                       )}
+                      {/* Show route summary in popup when this task has an active route */}
+                      {selectedTask?._id === task._id && distance != null && (
+                        <p className="text-xs text-primary font-medium mt-1">
+                          {(distance / 1000).toFixed(1)} km · {Math.round(duration / 60)} min
+                        </p>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -122,7 +218,9 @@ export default function MapPage() {
                 onClick={() => {
                   setSelectedTask(task);
                 }}
-                className="w-full text-left bg-card border rounded-xl p-3 hover:shadow-md transition-all"
+                className={`w-full text-left bg-card border rounded-xl p-3 hover:shadow-md transition-all ${
+                  selectedTask?._id === task._id ? "ring-2 ring-primary border-primary" : ""
+                }`}
               >
                 <p className="text-sm font-medium">{task.title}</p>
                 <p className="text-xs text-muted-foreground">
@@ -137,7 +235,10 @@ export default function MapPage() {
       <TaskDetailDialog
         open={!!selectedTask}
         onOpenChange={(open) => {
-          if (!open) setSelectedTask(null);
+          if (!open) {
+            setSelectedTask(null);
+            clearRoute();
+          }
         }}
         task={selectedTask}
         members={members}
@@ -147,6 +248,7 @@ export default function MapPage() {
         }}
         onDeleted={() => {
           setSelectedTask(null);
+          clearRoute();
           reload();
         }}
       />

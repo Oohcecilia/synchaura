@@ -14,6 +14,24 @@ function isLocalUrl(value) {
   }
 }
 
+function normalizeApiBaseUrl(value) {
+  const cleaned = String(value || "").trim().replace(/\/$/, "");
+  if (!cleaned) return "";
+
+  try {
+    const parsed = new URL(cleaned, isBrowser ? window.location.href : "http://localhost");
+    const pathname = parsed.pathname.replace(/\/$/, "");
+
+    if (!pathname || pathname === "/") {
+      return `${parsed.origin}/api`;
+    }
+
+    return `${parsed.origin}${pathname}`;
+  } catch {
+    return cleaned;
+  }
+}
+
 function resolveApiUrl() {
   if (!rawApiUrl) {
     return isBrowser ? `${window.location.origin}/api` : "/api";
@@ -28,7 +46,7 @@ function resolveApiUrl() {
     }
   }
 
-  return rawApiUrl;
+  return normalizeApiBaseUrl(rawApiUrl);
 }
 
 export const API_URL = resolveApiUrl();

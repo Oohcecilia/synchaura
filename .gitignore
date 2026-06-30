@@ -63,3 +63,5 @@ backup.txt
 entities/
 backend/data/auth-store.json
 backend/data/auth-store.local.json
+plan.txt
+vitest.config.js

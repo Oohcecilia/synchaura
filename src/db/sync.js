@@ -12,6 +12,7 @@ const INITIAL_SYNC_TIMEOUT_MS = 20000;
 
 let syncHandler = null;
 let activeUserId = null;
+let activeSessionToken = null;
 
 function getSessionToken() {
   try {
@@ -33,12 +34,11 @@ function withTimeout(promise, ms, message) {
 }
 
 function createRemoteDB() {
-  const token = getSessionToken();
-
   return new PouchDB(`${API_URL}/couch`, {
     skip_setup: true,
     fetch: (url, opts = {}) => {
       const headers = new Headers(opts.headers || {});
+      const token = getSessionToken();
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
       }
@@ -88,8 +88,9 @@ export async function runInitialSync({ id, onStatus, onProgress }) {
 
 export async function startSync({ id, onStatus, onProgress }) {
   const localDB = getDB(id);
+  const token = getSessionToken();
 
-  if (syncHandler && activeUserId === id) {
+  if (syncHandler && activeUserId === id && activeSessionToken === token) {
     return syncHandler;
   }
 
@@ -100,6 +101,7 @@ export async function startSync({ id, onStatus, onProgress }) {
 
   const remoteDB = createRemoteDB();
   activeUserId = id;
+  activeSessionToken = token;
 
   syncHandler = localDB.sync(remoteDB, {
     live: true,
@@ -124,4 +126,5 @@ export function stopSync() {
   }
 
   activeUserId = null;
+  activeSessionToken = null;
 }

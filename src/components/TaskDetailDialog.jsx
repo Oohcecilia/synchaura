@@ -1,25 +1,28 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Play,
-  Square,
-  Clock,
-  Calendar,
-  MapPin,
-  Users,
-  TrendingUp,
-  Edit,
-  Bot,
-  FileText,
-  MessageSquare,
-  Trash2,
+    Play,
+    Square,
+    Clock,
+    Calendar,
+    MapPin,
+    Users,
+    TrendingUp,
+    Edit,
+    Bot,
+    FileText,
+    MessageSquare,
+    Trash2,
+    ExternalLink,
+    Navigation,
 } from "lucide-react";
 import TaskThread from "@/components/TaskThread";
 import TaskAgents from "@/components/TaskAgents";
@@ -30,14 +33,14 @@ import { useAuth } from "@/lib/AuthContext";
 import { getDB } from "@/db/couch";
 import { getTaskDeadlineDate } from "@/lib/task-dates";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle as AlertDialogTitlePrimitive,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle as AlertDialogTitlePrimitive,
 } from "@/components/ui/alert-dialog";
 import { canUserDeleteTask } from "@/lib/task-access";
 
@@ -70,15 +73,16 @@ export default function TaskDetailDialog({
     const { user, session, memberships, hasFullAccess } = useAuth();
     const [timeLogs, setTimeLogs] = useState([]);
     const [team, setTeam] = useState(null);
-    const [assignee, setAssignee] = useState([]); 
+    const [assignee, setAssignee] = useState([]);
     const [running, setRunning] = useState(false);
     const [elapsed, setElapsed] = useState(0);
     const [activeLogId, setActiveLogId] = useState(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [agents, setAgents] = useState([]);
     const [agentCount, setAgentCount] = useState(0);
-    
+
     const intervalRef = useRef(null);
+    const navigate = useNavigate();
     const userId = user?.id || user?._id || session?.userId;
     const canDelete = canUserDeleteTask({
         userId,
@@ -111,7 +115,7 @@ export default function TaskDetailDialog({
         if (!task?._id || !session?.userId) return;
         const db = getDB(session.userId);
         const now = new Date().toISOString();
-        
+
         const newLog = {
             _id: `timelog_${Date.now()}`,
             type: "timelog",
@@ -264,178 +268,211 @@ export default function TaskDetailDialog({
         <Dialog open={open} onOpenChange={(v) => { if (!v) stopTimer(false); onOpenChange(v); }}>
             <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] overflow-hidden p-4 sm:w-full sm:max-w-lg sm:max-h-[90vh] sm:p-6">
                 <div className="flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-hidden sm:max-h-[calc(90vh-3rem)]">
-                <DialogHeader className="text-left sm:text-left">
-                    <div className="flex items-start justify-between gap-3 pr-8 sm:pr-4">
-                        <DialogTitle className="text-lg sm:text-base leading-snug">{task.title}</DialogTitle>
-                        <div className="flex shrink-0 items-center gap-2">
-                            {canDelete && (
+                    <DialogHeader className="text-left sm:text-left">
+                        <div className="flex items-start justify-between gap-3 pr-8 sm:pr-4">
+                            <DialogTitle className="text-lg sm:text-base leading-snug">{task.title}</DialogTitle>
+
+
+
+                            <div className="flex shrink-0 items-center gap-1">
+                                {task.latitude != null && task.longitude != null && (
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        title="View on Map"
+                                        onClick={() => {
+                                            onOpenChange(false);
+                                            navigate("/map", { state: { task } });
+                                        }}
+                                        className="h-8 w-8 rounded-full text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                    >
+                                        <Navigation className="h-4 w-4" />
+                                    </Button>
+                                )}
+
+                                {canDelete && (
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        title="Delete Task"
+                                        onClick={() => setDeleteOpen(true)}
+                                        className="h-8 w-8 rounded-full text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                )}
+
                                 <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => setDeleteOpen(true)}
-                                    className="h-8 px-3"
+                                    size="icon"
+                                    variant="ghost"
+                                    title="Edit Task"
+                                    onClick={() => { onOpenChange(false); onEdit?.(task); }}
+                                    className="h-8 w-8 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                                 >
-                                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                                    <Edit className="h-4 w-4" />
                                 </Button>
-                            )}
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => { onOpenChange(false); onEdit?.(task); }}
-                                className="h-8 px-3"
-                            >
-                                <Edit className="h-3.5 w-3.5 mr-1" /> Edit
-                            </Button>
+                            </div>
                         </div>
-                    </div>
-                </DialogHeader>
+                    </DialogHeader>
 
-                <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-                {/* Badges */}
-                <div className="flex flex-wrap gap-2">
-                    <span className={cn("text-[11px] font-semibold px-2.5 py-1 rounded-full capitalize", priorityConfig[task.priority] || priorityConfig.medium)}>
-                        {task.priority || "medium"} priority
-                    </span>
-                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground capitalize">
-                        {task.status}
-                    </span>
-                    {deadlineDate && (
-                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2.5 py-1">
-                            <Calendar className="h-3 w-3" /> {format(deadlineDate, "MMM d, yyyy")}
-                        </span>
-                    )}
-                    {agentCount > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2.5 py-1">
-                            <Bot className="h-3 w-3" /> {agentCount} agent{agentCount !== 1 ? "s" : ""}
-                        </span>
-                    )}
-                </div>
-
-                <Tabs defaultValue="overview" className="w-full">
-                    <TabsList className="bg-muted/50 rounded-xl p-1 w-full flex-wrap">
-                        <TabsTrigger value="overview" className="rounded-lg text-xs flex-1">Overview</TabsTrigger>
-                        <TabsTrigger value="agents" className="rounded-lg text-xs flex-1 flex items-center gap-1">
-                            <Bot className="h-3 w-3" /> Agents
-                        </TabsTrigger>
-                        <TabsTrigger value="reports" className="rounded-lg text-xs flex-1 flex items-center gap-1">
-                            <FileText className="h-3 w-3" /> Reports
-                        </TabsTrigger>
-                        <TabsTrigger value="discussion" className="rounded-lg text-xs flex-1 flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3" /> Discussion
-                        </TabsTrigger>
-                    </TabsList>
-
-                    {/* Overview Tab */}
-                    <TabsContent value="overview" className="space-y-5 mt-4">
-                        {task.description && (
-                            <p className="text-sm text-muted-foreground">{task.description}</p>
-                        )}
-                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                            {task.location_name && (
-                                <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{task.location_name}</span>
+                    <div className="flex-1 overflow-y-auto pr-1 space-y-4">
+                        {/* Badges */}
+                        <div className="flex flex-wrap gap-2">
+                            <span className={cn("text-[11px] font-semibold px-2.5 py-1 rounded-full capitalize", priorityConfig[task.priority] || priorityConfig.medium)}>
+                                {task.priority || "medium"} priority
+                            </span>
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground capitalize">
+                                {task.status}
+                            </span>
+                            {deadlineDate && (
+                                <span className="flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2.5 py-1">
+                                    <Calendar className="h-3 w-3" /> {format(deadlineDate, "MMM d, yyyy")}
+                                </span>
                             )}
-                            {assignee.length > 0 && (
-                                <span className="flex items-center gap-1">
-                                    <Users className="h-3.5 w-3.5" />
-                                    {assignee.map((m) => m.full_name || m.email).join(", ")}
+                            {agentCount > 0 && (
+                                <span className="flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2.5 py-1">
+                                    <Bot className="h-3 w-3" /> {agentCount} agent{agentCount !== 1 ? "s" : ""}
                                 </span>
                             )}
                         </div>
 
-                        {/* Time Tracking */}
-                        <div className="bg-muted/50 rounded-xl p-4 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                                <TrendingUp className="h-3.5 w-3.5" /> Time Tracking
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="text-center">
-                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Estimated</p>
-                                    <p className="text-lg font-bold mt-0.5">{task.estimated_hours ?? "—"}<span className="text-xs font-normal text-muted-foreground ml-0.5">h</span></p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Logged</p>
-                                    <p className={cn("text-lg font-bold mt-0.5", task.estimated_hours && parseFloat(totalLoggedHours) > task.estimated_hours ? "text-destructive" : "")}>
-                                        {totalLoggedHours}<span className="text-xs font-normal text-muted-foreground ml-0.5">h</span>
-                                    </p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Efficiency</p>
-                                    <p className={cn("text-lg font-bold mt-0.5", efficiency ? (efficiency >= 100 ? "text-emerald-600" : efficiency >= 75 ? "text-amber-600" : "text-destructive") : "")}>
-                                        {efficiency ? `${efficiency}%` : "—"}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
-                                {running ? (
-                                    <>
-                                        <div className="flex-1 font-mono text-sm font-semibold text-primary">{formatDuration(elapsed)}</div>
-                                        <Button size="sm" variant="destructive" onClick={() => stopTimer(true)}>
-                                            <Square className="h-3.5 w-3.5 mr-1 fill-current" /> Stop & Save
-                                        </Button>
-                                    </>
-                                ) : (
-                                    <Button size="sm" onClick={startTimer} className="w-full">
-                                        <Play className="h-3.5 w-3.5 mr-1 fill-current" /> Start Timer
-                                    </Button>
+                        <Tabs defaultValue="overview" className="w-full">
+                            <TabsList className="bg-muted/50 rounded-xl p-1 w-full flex-wrap">
+                                <TabsTrigger value="overview" className="rounded-lg text-xs flex-1">Overview</TabsTrigger>
+                                <TabsTrigger value="agents" className="rounded-lg text-xs flex-1 flex items-center gap-1">
+                                    <Bot className="h-3 w-3" /> Agents
+                                </TabsTrigger>
+                                <TabsTrigger value="reports" className="rounded-lg text-xs flex-1 flex items-center gap-1">
+                                    <FileText className="h-3 w-3" /> Reports
+                                </TabsTrigger>
+                                <TabsTrigger value="discussion" className="rounded-lg text-xs flex-1 flex items-center gap-1">
+                                    <MessageSquare className="h-3 w-3" /> Discussion
+                                </TabsTrigger>
+                            </TabsList>
+
+                            {/* Overview Tab */}
+                            <TabsContent value="overview" className="space-y-5 mt-4">
+                                {task.description && (
+                                    <p className="text-sm text-muted-foreground">{task.description}</p>
                                 )}
-                            </div>
-                        </div>
-
-                        {/* Optional Attachments Section */}
-                        {/* <AttachmentsViewer attachments={task.attachments} /> */}
-
-                        {timeLogs.length > 0 && (
-                            <div className="space-y-2">
-                                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                                    <Clock className="h-3.5 w-3.5" /> Log History
-                                </h4>
-                                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                                    {timeLogs.map((log) => (
-                                        <div key={log._id} className="flex items-center justify-between text-xs bg-muted/40 rounded-lg px-3 py-2">
-                                            <span className="text-muted-foreground">
-                                                {log.started_at ? format(new Date(log.started_at), "MMM d, HH:mm") : "Unknown"}
-                                            </span>
-                                            <span className="font-semibold">
-                                                {log.duration_minutes != null ? `${log.duration_minutes}m` : <span className="text-primary animate-pulse">Running...</span>}
-                                            </span>
-                                        </div>
-                                    ))}
+                                <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                                    {task.location_name && task.latitude != null && task.longitude != null ? (
+                                        <a
+                                            href={`https://www.google.com/maps/dir/?api=1&destination=${task.latitude},${task.longitude}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-primary hover:text-primary/80 hover:underline transition-colors"
+                                        >
+                                            <MapPin className="h-3.5 w-3.5" />
+                                            {task.location_name}
+                                            <ExternalLink className="h-3 w-3 ml-0.5" />
+                                        </a>
+                                    ) : task.location_name ? (
+                                        <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{task.location_name}</span>
+                                    ) : null}
+                                    {assignee.length > 0 && (
+                                        <span className="flex items-center gap-1">
+                                            <Users className="h-3.5 w-3.5" />
+                                            {assignee.map((m) => m.full_name || m.email).join(", ")}
+                                        </span>
+                                    )}
                                 </div>
-                            </div>
-                        )}
-                    </TabsContent>
 
-                    {/* Agents Tab */}
-                    <TabsContent value="agents" className="mt-4">
-                        <TaskAgents
-                            task={task}
-                            onAgentCountChange={async (count) => {
-                                setAgentCount(count);
-                                try {
-                                    const db = getDB(session?.userId);
-                                    const result = await db.allDocs({ include_docs: true });
-                                    const filteredAgents = result.rows
-                                        .map(r => r.doc)
-                                        .filter(d => d.type === "agent" && d.task_id === task._id);
-                                    setAgents(filteredAgents);
-                                } catch (e) {
-                                    console.error(e);
-                                }
-                            }}
-                        />
-                    </TabsContent>
 
-                    {/* Reports Tab */}
-                    <TabsContent value="reports" className="mt-4">
-                        <TaskReports task={task} agents={agents} />
-                    </TabsContent>
+                                {/* Time Tracking */}
+                                <div className="bg-muted/50 rounded-xl p-4 space-y-3">
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                                        <TrendingUp className="h-3.5 w-3.5" /> Time Tracking
+                                    </h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="text-center">
+                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Estimated</p>
+                                            <p className="text-lg font-bold mt-0.5">{task.estimated_hours ?? "—"}<span className="text-xs font-normal text-muted-foreground ml-0.5">h</span></p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Logged</p>
+                                            <p className={cn("text-lg font-bold mt-0.5", task.estimated_hours && parseFloat(totalLoggedHours) > task.estimated_hours ? "text-destructive" : "")}>
+                                                {totalLoggedHours}<span className="text-xs font-normal text-muted-foreground ml-0.5">h</span>
+                                            </p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Efficiency</p>
+                                            <p className={cn("text-lg font-bold mt-0.5", efficiency ? (efficiency >= 100 ? "text-emerald-600" : efficiency >= 75 ? "text-amber-600" : "text-destructive") : "")}>
+                                                {efficiency ? `${efficiency}%` : "—"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+                                        {running ? (
+                                            <>
+                                                <div className="flex-1 font-mono text-sm font-semibold text-primary">{formatDuration(elapsed)}</div>
+                                                <Button size="sm" variant="destructive" onClick={() => stopTimer(true)}>
+                                                    <Square className="h-3.5 w-3.5 mr-1 fill-current" /> Stop & Save
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <Button size="sm" onClick={startTimer} className="w-full">
+                                                <Play className="h-3.5 w-3.5 mr-1 fill-current" /> Start Timer
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
 
-                    {/* Discussion Tab */}
-                    <TabsContent value="discussion" className="mt-4">
-                        <TaskThread task={task} members={members} />
-                    </TabsContent>
-                </Tabs>
-                </div>
+                                {/* Optional Attachments Section */}
+                                {/* <AttachmentsViewer attachments={task.attachments} /> */}
+
+                                {timeLogs.length > 0 && (
+                                    <div className="space-y-2">
+                                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                                            <Clock className="h-3.5 w-3.5" /> Log History
+                                        </h4>
+                                        <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                            {timeLogs.map((log) => (
+                                                <div key={log._id} className="flex items-center justify-between text-xs bg-muted/40 rounded-lg px-3 py-2">
+                                                    <span className="text-muted-foreground">
+                                                        {log.started_at ? format(new Date(log.started_at), "MMM d, HH:mm") : "Unknown"}
+                                                    </span>
+                                                    <span className="font-semibold">
+                                                        {log.duration_minutes != null ? `${log.duration_minutes}m` : <span className="text-primary animate-pulse">Running...</span>}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            {/* Agents Tab */}
+                            <TabsContent value="agents" className="mt-4">
+                                <TaskAgents
+                                    task={task}
+                                    onAgentCountChange={async (count) => {
+                                        setAgentCount(count);
+                                        try {
+                                            const db = getDB(session?.userId);
+                                            const result = await db.allDocs({ include_docs: true });
+                                            const filteredAgents = result.rows
+                                                .map(r => r.doc)
+                                                .filter(d => d.type === "agent" && d.task_id === task._id);
+                                            setAgents(filteredAgents);
+                                        } catch (e) {
+                                            console.error(e);
+                                        }
+                                    }}
+                                />
+                            </TabsContent>
+
+                            {/* Reports Tab */}
+                            <TabsContent value="reports" className="mt-4">
+                                <TaskReports task={task} agents={agents} />
+                            </TabsContent>
+
+                            {/* Discussion Tab */}
+                            <TabsContent value="discussion" className="mt-4">
+                                <TaskThread task={task} members={members} />
+                            </TabsContent>
+                        </Tabs>
+                    </div>
                 </div>
 
                 <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

@@ -34,8 +34,9 @@ def build_couch_url(path: str) -> str:
     return urljoin(base, path.lstrip("/"))
 
 
+@router.api_route("", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"])
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"])
-async def proxy_couch(path: str, request: Request):
+async def proxy_couch(request: Request, path: str = ""):
     # PouchDB uses several DB-relative endpoints during replication, such as
     # _changes, _bulk_get, _bulk_docs, _revs_diff, and document ids.
     method = request.method
@@ -58,6 +59,7 @@ async def proxy_couch(path: str, request: Request):
         "_bulk_get",
         "_changes",
         "_find",
+        "_local",
         "_revs_diff",
     }:
         raise HTTPException(status_code=403, detail="CouchDB endpoint is not allowed through the sync proxy")
@@ -84,7 +86,8 @@ async def proxy_couch(path: str, request: Request):
     forwarded_headers = {
         key: value
         for key, value in request.headers.items()
-        if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() != "host"
+        if key.lower() not in HOP_BY_HOP_HEADERS
+        and key.lower() not in {"host", "authorization"}
     }
 
     try:
